@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.21)
 project(NadirStation VERSION 2.0.0 LANGUAGES C CXX)
 
+if(UNIX AND NOT APPLE)
+    # GNU/Linux-specific temporary fixes
+    include(GNUInstallDirs)
+
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 # MinGW Makefiles are single-configuration generators; `cmake --build --config
 # Release` does not change their compile flags. Default an unset build type to
 # Release so a normal Windows build does not run the per-sample DSP unoptimized.
