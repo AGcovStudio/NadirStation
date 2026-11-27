@@ -1,0 +1,29 @@
+{
+  "form": "OLR = c0 + c1*T1 + c2*(T1-T2) + c3*(T1-T3) + c4*(zenith/60) + c5*(lat/30)",
+  "fitted_on": "the regional product brightness temperatures the generator actually uses",
+  "coefficient_order": [
+    "const",
+    "T1",
+    "T1-T2",
+    "T1-T3",
+    "zenith/60",
+    "lat/30"
+  ],
+  "coefficients": {
+    "const": 240.99871610941278,
+    "T1": 0.021228197432124635,
+    "T1-T2": -0.16917013230363598,
+    "T1-T3": 0.33146744836592706,
+    "zenith/60": -22.8803126775317,
+    "lat/30": -8.377820785907403
+  },
+  "validation": {
+    "protocol": "leave-one-scene-out over every full-disk observation",
+    "scenes": 19,
+    "pairs": 21705600,
+    "pearson_r": 0.22231619606783282,
+    "bias": -0.5431245941306831,
+    "mae": 39.03519330488635,
+    "rmse": 48.68846945967626
+  }
+}

@@ -1,0 +1,42 @@
+# build output
+build/
+build-*/
+dist/
+CMakeCache.txt
+CMakeFiles/
+*.exe
+*.dll
+*.o
+*.obj
+*.a
+*.lib
+# recordings and decoded data
+*.cs8
+*.cu8
+*.cs16
+*.cf32
+*.iq
+*.wav
+*.cadu
+*.lrit
+*.hrit
+FY2_DATA/
+work/
+# keys are never committed
+resources/gk2a/
+EncryptionKeyMessage.bin
+# editors / tools
+.vs/
+.vscode/
+.idea/
+*.user
+__pycache__/
+*.pyc
+*.bak*
+build_test_log*.txt
+*.log
+dp_test.txt
+
+# 介绍视频不进仓库
+docs/media/
+*.mp4

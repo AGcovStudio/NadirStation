@@ -1,0 +1,251 @@
+{
+  "format": "FY2-Scan-Calibration-1",
+  "purpose": "Per-spacecraft S-VISSR scan geometry used by the geostationary reprojection. Both FY-2 spacecraft drift in longitude, so the sub-satellite longitude must be refreshed from the TLE and the scan-origin residual must be validated against an official product before it is relied on.",
+  "how_to_refresh": [
+    "python tools/fetch_tle.py      # the navigation propagates the TLE for every scan line; keep it under ~7 days old",
+    "nothing else is needed per observation: navigateObservation() fits the IR1 disk of each scene at run time",
+    "to re-validate: run tools/navigation_coastline_check.py on several daytime observations (VIS land/sea vs resources/maps/landmask.jpg); refit spin_scan_navigation.residual_* only from held-out-scene results"
+  ],
+  "nominal_angular_step_urad_per_px": 140.0,
+  "measurement_note": "The official 2288x2288 NOM disk spans rows 62..2226 (2165 px), which at the exact horizon latitude of 8.7005 deg implies 140.28 urad/px, confirming the nominal step to 0.2 percent.",
+  "satellites": {
+    "40367": {
+      "name": "FY-2G",
+      "nominal_slot_longitude_deg": 99.2,
+      "tle_subpoint_longitude_deg": 99.5867,
+      "tle_epoch_utc": "2026-10-03T14:18:21Z",
+      "drift_deg_per_day": -0.0315,
+      "drift_note": "Mean motion 1.00265029 rev/day against the 1.0027379 rev/day Earth rotation rate. About -11.5 deg/year westward, so the slot longitude is not usable as a fixed constant.",
+      "spin_scan_navigation": {
+        "enabled": true,
+        "model": "Per observation: satellite position for every scan line from the TLE (SGP4), scan axis = orbit normal (FY-2 is spin-stabilised; with FY-2G's ~5.9 deg inclination the image is rotated against geographic north by up to that angle, depending on orbital phase), scan angles -> pixels through the IR1 disk measured on the scene itself (centre, per-line shear, step asin(a/R)/rx and asin(b/R)/ry), plus the affine residual below. Implemented in src/imageproducts.cpp navigateObservation().",
+        "limb_threshold_k": 190.0,
+        "line_period_s": 0.6,
+        "processing_delay_s": 30.0,
+        "disk_aspect_ry_rx_range": [
+          0.9875,
+          1.0035
+        ],
+        "disk_aspect_note": "Disk aspect gate: navigation is used only if the fitted IR1 disk has ry/rx within this range; complete FY-2G disks give 0.9942..0.9970 (19 scenes). Outside it, lines were lost inside the reception (lines are numbered in reception order, gaps are not kept), so row placement and line timing drift and the legacy model is used instead (reason written to navigation_status).",
+        "timing_note": "Line times run back from created_utc (written ~seconds after the last line). The session folder name is the RECORDING start and can precede the image by 30-50 min (20261004_093504_325 is the 10:00 UTC image), which moved the north of that scene by 11 px before this was used.",
+        "residual_definition": "observed IR pixel = model pixel + k;  k = c0 + c1*(col-1145) + c2*(row-1145)  (infrared pixels, row 0 = scan line 1)",
+        "residual_row_px": [
+          1.035813,
+          0.002718,
+          -0.001739
+        ],
+        "residual_col_px": [
+          0.318231,
+          -0.003204,
+          -0.003162
+        ],
+        "residual_interpretation": "Step scale: the 190 K infrared limb lies ~10-20 km above the surface, so asin(a/R)/rx makes the step 0.17 % (N-S) to 0.32 % (E-W) too small; rotation ~0.0025 rad (0.14 deg) between the true spin axis and the TLE orbit normal; offsets ~1 px.",
+        "validation": {
+          "reference": "resources/maps/landmask.jpg (global land/sea, 0.044 deg) vs clear-sky VIS land/sea (warm IR1 > 285 K; sea DN < 50, land 60-112 on the 4x4-averaged visible raster)",
+          "method": "FFT cross-correlation of a balanced clear-pixel observation (+1/N_land, -1/N_sea, 0 elsewhere) against the FULL map field; 3x3 region grid; regions with peak < 0.6 or at the +-30 px search edge dropped",
+          "scenes": [
+            "20261004_053136_277",
+            "20261004_065916_062",
+            "20261004_085252_451",
+            "20261005_020148_029",
+            "20261005_030145_858",
+            "20261005_045700_538",
+            "20261006_030159_947",
+            "20261006_050152_633"
+          ],
+          "regions": 27,
+          "held_out_scene_rms_px": {
+            "row": 1.26,
+            "col": 0.51,
+            "total": 1.36,
+            "max": 3.2
+          },
+          "same_model_without_affine_residual_rms_px": 3.34,
+          "independent_infrared_check": "7 scenes (3 not used in the fit), IR1 land/sea at local noon: Australia / south-east regions within 0.7 px; whole disk row -0.4..-1.1, col +-0.5 px; far north row -1.3..-3 px with weak correlation (0.53-0.73), treated as unresolved",
+          "previous_geometries_on_the_same_check": "equatorial camera (calibrateFy2gCameraBoresight) with the measured disk: quadrant errors 15-47 px forming a ~3 deg rotation; the k=1 'limb at raster edge' lattice: coastlines drawn beyond the disk",
+          "not_validated": "FY-2H; night scenes (no VIS); scenes whose IR1 raster is not a complete 2291-line disk (these fall back to the legacy lattice and say so)",
+          "date": "2026-10-17"
+        },
+        "disk_statistics_19_scenes": {
+          "rx_px": [
+            1077.68,
+            0.31
+          ],
+          "ry_px": [
+            1072.59,
+            0.55
+          ],
+          "shear_px_per_line": [
+            -0.01338,
+            0.00055
+          ],
+          "centre_col_offset_px": [
+            -20.3,
+            0.51
+          ],
+          "centre_row_offset_px": [
+            -1.84,
+            1.68
+          ],
+          "note": "[mean, sd]; offsets relative to raster centre 1145. Shear and row offset vary smoothly with time of day, which is why they are measured per scene rather than stored here."
+        }
+      },
+      "status": "Production geometry is spin_scan_navigation (per observation). The k / residual fields above are the legacy fallback: they ignore the orbit inclination, the image rotation and the per-line shear, and can be off by 10-40 px.",
+      "geometry_status": "spin_scan_navigation_validated_against_coastlines_2026-10-17; legacy_fallback_not_validated",
+      "fitted_angular_step_urad_per_px": 141.0,
+      "fitted_angular_step_scale_k": 0.939,
+      "fitted_residual_row_px": 1.84,
+      "fitted_residual_col_px": 20.3,
+      "fit_reference": "LEGACY FALLBACK ONLY: 19-scene mean disk (see spin_scan_navigation.disk_statistics_19_scenes). Used only when an observation cannot be navigated from its own IR1 disk.",
+      "residual_validated": false,
+      "residual_applied_pending_validation": true,
+      "fit_skill": {
+        "note": "offline fit reached r=0.578 on the tuning scene but does not transfer to the application reprojection",
+        "historical_note_2026-10-17": "Only step scales >= 1 were tried here; the disk measurement points to k about 0.94, outside the range that was searched."
+      },
+      "validation": {
+        "observations": 19,
+        "candidates_evaluated": 6,
+        "mean_r_nominal_spherical": 0.4173,
+        "mean_r_calibrated": 0.4155,
+        "mean_mae_kelvin_nominal_spherical": 18.06,
+        "mean_mae_kelvin_calibrated": 15.91,
+        "mae_improvement_percent": 11.9,
+        "scenes_improved": "19/19",
+        "official_hour_to_hour_ceiling_r": 0.924,
+        "selection": "chosen by mean MAE over strictly independent full-disk observations, not by the tuning scene, because the parameter surface is flat: all six candidates scored within 0.02 in r and 0.7 K in MAE of one another, while every one of them improved all 19 scenes. The correction that matters is the step scale; the small residual offsets refine it."
+      },
+      "transfer_test": {
+        "why_not_applied": "The offline fit searched (angular step scale, row offset, column offset) against the official product and reported r=0.578 at a step scale of 1.015, improving mean MAE over 19 scenes from 18.06 to 15.91 K. Measuring the same parameter through the application reprojection shows the opposite: IR1 brightness temperature MAE against the official product degrades monotonically as the step scale grows.",
+        "application_measurements_scene_20261004_085252_451": {
+          "k=1.00000 residual=(0,0)": "r=+0.319 MAE=20.04 K bias=-0.52 K",
+          "k=1.01536 residual=(0,0)": "r=+0.221 MAE=23.85 K bias=-4.14 K",
+          "k=1.03050 residual=(0,0)": "r=+0.198 MAE=27.86 K bias=-8.20 K",
+          "k=1.03050 residual=(-5,+5)": "r=+0.199 MAE=26.33 K bias=-6.54 K"
+        },
+        "conclusion": "The application reprojection already samples the correct angular span, so scaling the half angle only shrinks or stretches the disk and misplaces every sample. The offline step-scale optimum was absorbing an error in the offline harness rather than measuring the instrument. Only the nominal lattice and the TLE-derived sub-satellite longitude are applied.",
+        "historical_note_2026-10-17": "Only step scales >= 1 were tried here; the disk measurement points to k about 0.94, outside the range that was searched."
+      },
+      "superseded_2026-10-17": {
+        "previous_values": {
+          "fitted_angular_step_urad_per_px": 140.0,
+          "fitted_angular_step_scale_k": 1.0,
+          "fitted_residual_row_px": 0.0,
+          "fitted_residual_col_px": 0.0,
+          "residual_validated": true,
+          "status": "nominal lattice applied (angular step 140 urad/px, no residual offsets), plus the TLE-derived sub-satellite longitude refreshed by tools/fetch_tle.py. The step-scale and residual fits are retained in transfer_test as a measured negative result so the same experiment is not repeated.",
+          "fit_reference": "offline joint fit (superseded, see transfer_test); the applied geometry is the nominal lattice plus the TLE sub-satellite longitude"
+        },
+        "previous_residual_validation_basis": "validated as ZERO against coastlines, not against the official product; see absolute_geolocation_validation. The fitted non-zero residuals remain unapplied and are kept as a measured negative result.",
+        "previous_residual_application_evidence": {
+          "tbb_mae_kelvin_step_scale_only": 19.19,
+          "tbb_mae_kelvin_with_residual": 19.23,
+          "tbb_r_step_scale_only": 0.351,
+          "tbb_r_with_residual": 0.35,
+          "verdict": "residual not applied"
+        },
+        "why_superseded": "The previous geometry put the limb at the raster edge, 1145 px from the centre (132.6 urad/px), while the measured disk is 1078 x 1073 px (about 140.9 urad/px, consistent with the 140 urad/px nominal step), and the scan origin was taken as the raster centre while the measured disk centre is 22 px left of it. 'Validated as ZERO against coastlines' and 'residual not applied' described that previous geometry and are kept here for the record only.",
+        "unresolved_conflict": "absolute_geolocation_validation below reported zero offset on 19 scenes; a disk measurement and that result cannot both be right. Re-run work/fy2verify/validate_final.py with a search window of at least +/-60 px; until then neither is confirmed."
+      }
+    },
+    "43491": {
+      "name": "FY-2H",
+      "nominal_slot_longitude_deg": 79.0,
+      "tle_subpoint_longitude_deg": 79.14,
+      "tle_epoch_utc": "2026-10-04T23:13:43Z",
+      "drift_deg_per_day": -0.0144,
+      "drift_note": "Mean motion 1.00269798 rev/day. About -5.3 deg/year westward.",
+      "fitted_angular_step_urad_per_px": null,
+      "fitted_residual_row_px": null,
+      "fitted_residual_col_px": null,
+      "status": "No FY-2H observation and matching official product were available in this workspace, so no residual fit exists. Only the TLE-derived longitude is recorded.",
+      "spin_scan_navigation": {
+        "enabled": true,
+        "limb_threshold_k": 190.0,
+        "line_period_s": 0.6,
+        "processing_delay_s": 30.0,
+        "disk_aspect_ry_rx_range": [
+          0.9875,
+          1.0035
+        ],
+        "disk_aspect_note": "Disk aspect gate: navigation is used only if the fitted IR1 disk has ry/rx within this range; complete FY-2G disks give 0.9942..0.9970 (19 scenes). Outside it, lines were lost inside the reception (lines are numbered in reception order, gaps are not kept), so row placement and line timing drift and the legacy model is used instead (reason written to navigation_status).",
+        "residual_row_px": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "residual_col_px": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "status": "Same physical model as FY-2G (TLE per line, orbit-normal scan axis, per-scene IR1 disk); residual kept at 0. Checked 2026-10-17 on the 2026-10-11 FY-2H receptions with the unbiased coastline method (land/sea classified from the observation alone vs the full land mask, 286-px tiles): the two contiguous partial receptions that pass the gates, 04:31 (lines 2-1234) and 05:35 (rows 759-2290), give tile-median offsets dy +2.8 / +0.9 and dx +2.2 / +1.4 IR px (most tiles 0-3 px). Two scenes do not support fitting a residual, so none is applied: expect ~1-3 px error for contiguous receptions. 05:00 (ry/rx 0.978, lost lines; offsets grew to 28 px) and 06:00 (limb rms > 2 px) fall back to the legacy model; 05:30 has too little disk for a limb fit.",
+        "validation": {
+          "method": "work/nav_staging/session_20261017/scripts/fy2h_coast.py (coastglobal.score_binary per 286-px tile)",
+          "20261011_043146_581": {
+            "disk_ry_rx": 0.9919,
+            "tiles": 11,
+            "dy_median": 2.82,
+            "dx_median": 2.22,
+            "navigation": "per-observation"
+          },
+          "20261011_053505_515": {
+            "disk_ry_rx": 0.9967,
+            "tiles": 10,
+            "dy_median": 0.9,
+            "dx_median": 1.35,
+            "navigation": "per-observation"
+          },
+          "20261011_050053_808": {
+            "disk_ry_rx": 0.9779,
+            "tiles": 13,
+            "dy_median": 15.6,
+            "dx_median": 0.69,
+            "navigation": "legacy (aspect gate)"
+          },
+          "20261011_060050_769": {
+            "navigation": "legacy (limb fit rms 5-30 px)"
+          },
+          "20261011_053052_283": {
+            "navigation": "legacy (no limb)"
+          }
+        }
+      }
+    }
+  },
+  "absolute_geolocation_validation": {
+    "status": "INVALID_2026-10-17",
+    "status_note": "This check could not detect an offset. coastline_clearsky.py puts the observation AND the map on the same clear-pixel support (0 elsewhere), and the cross-correlation of two fields with identical support peaks at zero shift whatever the content; hence 15/19 scenes 'exactly 0'. On the same scenes the geometry it validated misplaces coastlines by >20 px (spin_scan_navigation.validation). Kept for the record only.",
+    "method": "Natural Earth coastlines vs the delivered regional visible product. The regional product is an equirectangular lon/lat grid (centre 16 N / 124 E, spanning +/-34 deg lon and +/-21 deg lat over 1360x840 px), so the land mask maps onto it by linear scaling and no satellite geometry is involved. Normalised cross-correlation of the observed land/sea pattern against the map over all offsets; the peak is the geolocation error.",
+    "why_not_official_product": "A fit against the official NOM grid cannot separate a real datum difference from a scan offset: the station uses the TLE sub-satellite longitude (99.53 E) while the official grid is built on the nominal slot (99.2 E), so a roughly 0.33 deg difference appears as a ~100 px shift between the two grids no matter which is right. Coastlines are independent of both.",
+    "cloud_handling": "The visible channel in daylight is dominated by cloud, and an earlier unrestricted pass scattered by 16-18 px with the weakest correlation reaching the search boundary. Cloud pixels are now excluded from BOTH classes, so a cloud sheet cannot pull the peak. This is what reduced the scatter to sub-pixel.",
+    "scenes": 19,
+    "scenes_with_exactly_zero_offset": 15,
+    "excluded_outliers": [
+      {
+        "scene": "20261005_005526_321",
+        "drow": 36,
+        "dcol": -28,
+        "ncc": 0.30440672712077244,
+        "clear_fraction": 0.33542717086834734
+      }
+    ],
+    "residual_row_px": {
+      "mean": 0.167,
+      "sd": 0.373
+    },
+    "residual_col_px": {
+      "mean": 0.0,
+      "sd": 0.0
+    },
+    "correlation_at_peak": {
+      "min": 0.2838,
+      "max": 0.4944,
+      "note": "0.24-0.49 is far above noise, so the offsets are measurements rather than fitting artefacts"
+    },
+    "acceptance_criterion": "sd < 1 px",
+    "verdict": "SUPERSEDED (method biased to zero offset)",
+    "conclusion": "The delivered regional product is correctly placed on the Earth to within a fraction of a pixel. The apparent ~+40 px row offset seen when fitting against the official product is therefore NOT a geolocation error of this station: it is the difference between the TLE-derived sub-satellite longitude and the official nominal slot. Applying the fitted residual would move a correct product off the coastlines, which is why it stays unapplied.",
+    "supersedes": "The earlier coastline attempts (coastline_register.py, coastline_register2.py, coastline_pattern.py, coastline_fft.py) are retained as measured negative results: brightness-based statistics measured cloud rather than coastline, and the row-order question was settled separately (north-up scores 1.098 against south-up 0.717)."
+  }
+}

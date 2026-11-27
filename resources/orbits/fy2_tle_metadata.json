@@ -1,0 +1,23 @@
+{
+  "generated_utc": "2026-10-05T08:28:52+00:00",
+  "purpose": "FY-2 S-VISSR scan geometry; TLE must stay current because both spacecraft drift in longitude",
+  "satellites": {
+    "2H": {
+      "norad_id": "43491",
+      "name": "FENGYUN 2H",
+      "nominal_longitude_deg": 79.0,
+      "epoch_utc": "2026-10-04T23:13:43.679424+00:00",
+      "age_days": 0.39,
+      "source_file": "fy22h.tle"
+    },
+    "2G": {
+      "norad_id": "40367",
+      "name": "FENGYUN 2G",
+      "nominal_longitude_deg": 99.2,
+      "epoch_utc": "2026-10-03T14:18:21.419136+00:00",
+      "age_days": 1.76,
+      "source_file": "fy22g.tle",
+      "preserved": true
+    }
+  }
+}
