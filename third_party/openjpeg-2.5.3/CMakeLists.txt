@@ -293,6 +293,14 @@ endif()
 
 #-----------------------------------------------------------------------------
 # install all targets referenced as OPENJPEGTargets (relocatable with CMake 3.0+)
+
+if(UNIX AND NOT APPLE)
+  # GNU/Linux-specific temporary fixes
+  if(NOT OPENJPEG_BINARY_DIR)
+    set(OPENJPEG_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+  endif()
+endif()
+
 install(EXPORT OpenJPEGTargets DESTINATION ${OPENJPEG_INSTALL_PACKAGE_DIR})
 include(CMakePackageConfigHelpers)
 configure_package_config_file(${CMAKE_CURRENT_LIST_DIR}/cmake/OpenJPEGConfig.cmake.in
