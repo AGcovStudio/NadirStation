@@ -196,7 +196,9 @@ private:
     QComboBox* satelliteSelector_ = nullptr;
     QDoubleSpinBox* gain_ = nullptr;
     QComboBox* sampleRate_ = nullptr;
+    QDoubleSpinBox* sampleRateManual_ = nullptr;   // MS/s, shown when "Manual" is chosen
     QComboBox* bandwidth_ = nullptr;
+    QDoubleSpinBox* bandwidthManual_ = nullptr;   // MHz, shown when "Manual" is chosen
     QComboBox* rrcAlpha_ = nullptr;
     QComboBox* pllBandwidth_ = nullptr;
     QComboBox* fftSize_ = nullptr;
@@ -229,6 +231,8 @@ private:
     QCheckBox* hackrfAntennaPower_ = nullptr;
     QDoubleSpinBox* freqShift_ = nullptr;   // kHz, issue #4
     double frequencyShiftHz() const;
+    double sampleRateHz() const;    // Sample Rate box in Hz (the typed value when Manual is chosen)
+    double rfBandwidthHz() const;   // RF bandwidth box: 0 = None (automatic), otherwise Hz
     QLineEdit* wavPath_ = nullptr;
     QPushButton* wavBrowse_ = nullptr;
     QComboBox* wavSpeed_ = nullptr;

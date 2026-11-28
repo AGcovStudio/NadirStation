@@ -137,7 +137,7 @@ QWidget* MainWindow::makeControlPanel() {
     sourceForm.row(QStringLiteral("Playback"), wavSpeed_);
     wavRange_ = new QComboBox;
     wavRange_->addItems({"Full file", "First 50%", "First 25%"});
-    wavRange_->setCurrentIndex(1);
+    wavRange_->setCurrentIndex(0);   // full file, also with Max
     sourceForm.row(QStringLiteral("Range"), wavRange_);
     lay->addWidget(sourceBox);
 
@@ -179,7 +179,8 @@ QWidget* MainWindow::makeControlPanel() {
     gain_->setRange(-30, 73);
     gain_->setValue(35);
     gain_->setSuffix(" dB");
-    gain_->setToolTip(QStringLiteral("Takes effect at once while receiving; remembered per satellite and input source"));
+    gain_->setToolTip(QStringLiteral("Takes effect at once while receiving; remembered per satellite and input source.\n"
+                                     "The PlutoSDR's AD9361 tops out near 71 dB around 1.7 GHz: a higher value is limited to what the board accepts."));
     tuneForm.row(QStringLiteral("Gain"), gain_);
     // Applied at once while the Pluto runs, and remembered per satellite and input source, so the
     // value tuned for one downlink comes back with it.
@@ -194,19 +195,74 @@ QWidget* MainWindow::makeControlPanel() {
 
     sampleRate_ = new QComboBox;
     sampleRate_->addItems({"6.000 MS/s", "5.000 MS/s", "4.000 MS/s", "3.000 MS/s", "2.500 MS/s", "2.400 MS/s", "2.000 MS/s", "8.000 MS/s", "10.000 MS/s", "3.200 MS/s"});
+    sampleRate_->addItem(QStringLiteral("Manual…"), -1);
     // 2.500 MS/s, the rate the bank holds a lock at (index four of the list above).
     sampleRate_->setCurrentIndex(4);
-    tuneForm.row(QStringLiteral("Sample rate"), sampleRate_);
+    sampleRateManual_ = new QDoubleSpinBox;
+    sampleRateManual_->setRange(0.1, 61.44);
+    sampleRateManual_->setDecimals(3);
+    sampleRateManual_->setSingleStep(0.1);
+    sampleRateManual_->setSuffix(QStringLiteral(" MS/s"));
+    sampleRateManual_->setValue(2.5);
+    sampleRateManual_->setToolTip(QStringLiteral("Sample rate in MS/s. What the device accepts depends on the input: "
+                                                 "RTL-SDR up to 3.2, HackRF One 2 to 20, PlutoSDR up to 61.44 "
+                                                 "(lossless over the network up to about 12.5)."));
+    sampleRateManual_->hide();
+    auto* sampleRateRow = new QWidget;
+    auto* sampleRateLay = new QHBoxLayout(sampleRateRow);
+    sampleRateLay->setContentsMargins(0, 0, 0, 0);
+    sampleRateLay->setSpacing(6);
+    sampleRateLay->addWidget(sampleRate_, 1);
+    sampleRateLay->addWidget(sampleRateManual_);
+    const auto syncSampleRateBox = [this] {
+        const bool manual = sampleRate_->currentData().toInt() == -1;
+        sampleRateManual_->setVisible(manual);
+        const int item = sampleRate_->findData(-1);
+        if (item >= 0)
+            sampleRate_->setItemText(item, manual ? QStringLiteral("Manual (%1 MS/s)").arg(sampleRateManual_->value(), 0, 'f', 3)
+                                                  : QStringLiteral("Manual…"));
+    };
+    connect(sampleRate_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, syncSampleRateBox);
+    connect(sampleRateManual_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, syncSampleRateBox);
+    tuneForm.row(QStringLiteral("Sample rate"), sampleRateRow);
 
     bandwidth_ = new QComboBox;
+    bandwidth_->addItem(QStringLiteral("None (no bandwidth limit)"), 0);
     bandwidth_->addItem(QStringLiteral("2.000 MHz"), 2000000);
     bandwidth_->addItem(QStringLiteral("1.800 MHz"), 1800000);
     bandwidth_->addItem(QStringLiteral("1.000 MHz"), 1000000);
     bandwidth_->addItem(QStringLiteral("5.200 MHz"), 5200000);
-    bandwidth_->addItem(QStringLiteral("Automatic (RTL-SDR / HackRF)"), 0);
+    bandwidth_->addItem(QStringLiteral("Manual…"), -1);
     // S-VISSR's transmitted channel bandwidth is 2 MHz; narrowing this to 1 MHz rejects valid sidebands.
-    bandwidth_->setCurrentIndex(0);
-    tuneForm.row(QStringLiteral("RF bandwidth"), bandwidth_);
+    bandwidth_->setCurrentIndex(0);   // None. Not remembered, so every launch starts on None.
+    bandwidth_->setToolTip(QStringLiteral("None sends no bandwidth limit: the receiver opens its filter to follow the sample rate.\n"
+                                          "Manual lets you type any bandwidth in MHz."));
+    bandwidthManual_ = new QDoubleSpinBox;
+    bandwidthManual_->setRange(0.05, 60.0);
+    bandwidthManual_->setDecimals(3);
+    bandwidthManual_->setSingleStep(0.1);
+    bandwidthManual_->setSuffix(QStringLiteral(" MHz"));
+    bandwidthManual_->setValue(2.0);
+    bandwidthManual_->setToolTip(QStringLiteral("RF bandwidth in MHz. The receiver rounds it to what its hardware supports "
+                                                "(PlutoSDR 0.2-56 MHz, HackRF the nearest filter step)."));
+    bandwidthManual_->hide();
+    auto* bandwidthRow = new QWidget;
+    auto* bandwidthLay = new QHBoxLayout(bandwidthRow);
+    bandwidthLay->setContentsMargins(0, 0, 0, 0);
+    bandwidthLay->setSpacing(6);
+    bandwidthLay->addWidget(bandwidth_, 1);
+    bandwidthLay->addWidget(bandwidthManual_);
+    const auto syncBandwidthBox = [this] {
+        const bool manual = bandwidth_->currentData().toInt() == -1;
+        bandwidthManual_->setVisible(manual);
+        const int item = bandwidth_->findData(-1);
+        if (item >= 0)
+            bandwidth_->setItemText(item, manual ? QStringLiteral("Manual (%1 MHz)").arg(bandwidthManual_->value(), 0, 'f', 3)
+                                                 : QStringLiteral("Manual…"));
+    };
+    connect(bandwidth_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, syncBandwidthBox);
+    connect(bandwidthManual_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, syncBandwidthBox);
+    tuneForm.row(QStringLiteral("RF bandwidth"), bandwidthRow);
     lay->addWidget(tuneBox);
 
     const auto applyKey = [this](const QString& path) {
@@ -557,7 +613,7 @@ double symbolRateOf(int sat) {
 void MainWindow::refreshDecoderPanel(bool receiving) {
     const int sat = satelliteSelector_ ? satelliteSelector_->currentData().toInt() : 0;
     const double sym = symbolRateOf(sat);
-    const double fs = sampleRate_ ? sampleRate_->currentText().section(QLatin1Char(' '), 0, 0).toDouble() * 1e6 : 0.0;
+    const double fs = sampleRate_ ? sampleRateHz() : 0.0;
     if (decModulation_) decModulation_->setText(modulationOf(sat));
     if (decSymbolRate_) decSymbolRate_->setText(sym <= 0.0 ? QStringLiteral("—")
         : sym >= 1e6 ? QStringLiteral("%1 Msym/s").arg(sym / 1e6, 0, 'f', 3) : QStringLiteral("%1 ksym/s").arg(sym / 1e3, 0, 'f', 0));

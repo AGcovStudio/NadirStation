@@ -29,6 +29,28 @@ PlutoReceiver::~PlutoReceiver() {
     if (retired_.joinable()) retired_.join();
 }
 
+#ifdef NADIRSTATION_HAS_LIBIIO
+namespace {
+// The AD9361 refuses a hardwaregain above the ceiling of its gain table, which depends on the LO frequency
+// (about 71 dB around 1.7 GHz, 73 dB below 1.3 GHz). A request above it must not stop the receiver from
+// starting: step down by half a dB until the board accepts it. Returns the gain that was set, or NaN if
+// even the lowest step failed (a real error, such as a lost connection).
+double writeRxGain(iio_channel* rx, double wanted, bool* limited) {
+    double g = wanted;
+    for (int step = 0; step < 24; ++step) {
+        if (iio_channel_attr_write_double(rx, "hardwaregain", g) >= 0) {
+            *limited = step > 0;
+            return g;
+        }
+        if (wanted < 40.0) break;   // not a ceiling problem
+        g -= 0.5;
+    }
+    *limited = false;
+    return std::nan("");
+}
+}  // namespace
+#endif
+
 void PlutoReceiver::setParameters(double frequencyHz, double sampleRate, double bandwidthHz, double gainDb) {
     frequencyHz_ = frequencyHz;
     sampleRate_ = sampleRate;
@@ -79,8 +101,29 @@ bool PlutoReceiver::configurePluto() {
     if (failAttr(iio_channel_attr_write(rx, "gain_control_mode", "manual"), "gain_control_mode")) return false;
     rxPhy_ = rx;
     pendingGain_.store(-1000.0);   // start() applies gainDb_ below
-    if (failAttr(iio_channel_attr_write_double(rx, "hardwaregain", gainDb_), "hardwaregain")) return false;
-    if (failAttr(iio_channel_attr_write_longlong(rx, "rf_bandwidth", static_cast<long long>(bandwidthHz_)), "rf_bandwidth")) return false;
+    {
+        bool limited = false;
+        const double applied = writeRxGain(rx, gainDb_, &limited);
+        if (std::isnan(applied)) { failAttr(-1, "hardwaregain"); return false; }
+        if (limited) {
+            emit statusMessage(QStringLiteral("Pluto gain limited to %1 dB (the AD9361 accepts no more at this frequency)")
+                                   .arg(applied, 0, 'f', 1));
+            gainDb_ = applied;
+        }
+    }
+    if (bandwidthHz_ > 0.0) {
+        // The AD9361 filter runs from 0.2 to 56 MHz; a manual value outside that is clamped, not refused.
+        const long long chosen = std::min(std::max(static_cast<long long>(bandwidthHz_), 200000LL), 56000000LL);
+        if (failAttr(iio_channel_attr_write_longlong(rx, "rf_bandwidth", chosen), "rf_bandwidth")) return false;
+    } else {
+        // "No bandwidth limit": open the analog filter as wide as the sample rate needs. This is written
+        // on every start because the Pluto keeps whatever an earlier session left in rf_bandwidth.
+        // A rejected value is not fatal; the board then keeps its current filter.
+        const long long wide = std::min(std::max(static_cast<long long>(sampleRate_), 200000LL), 56000000LL);
+        if (iio_channel_attr_write_longlong(rx, "rf_bandwidth", wide) < 0)
+            emit statusMessage(QStringLiteral("Pluto rf_bandwidth could not be opened to %1 MHz; keeping the board's current filter.")
+                                   .arg(wide / 1e6, 0, 'f', 3));
+    }
     if (failAttr(iio_channel_attr_write_longlong(rx, "sampling_frequency", static_cast<long long>(sampleRate_)), "sampling_frequency")) return false;
 
     long long readBack = 0;
@@ -113,8 +156,10 @@ bool PlutoReceiver::configurePluto() {
         emit deviceConnected(false);
         return false;
     }
-    emit statusMessage(QStringLiteral("PlutoSDR connected: %1 · %2 MS/s · %3 MHz BW")
-        .arg(ip_).arg(actualSampleRate_ / 1e6, 0, 'f', 3).arg(bandwidthHz_ / 1e6, 0, 'f', 3));
+    const QString bandwidthText = bandwidthHz_ > 0.0 ? QStringLiteral("%1 MHz BW").arg(bandwidthHz_ / 1e6, 0, 'f', 3)
+                                                     : QStringLiteral("no bandwidth limit");
+    emit statusMessage(QStringLiteral("PlutoSDR connected: %1 · %2 MS/s · %3")
+        .arg(ip_).arg(actualSampleRate_ / 1e6, 0, 'f', 3).arg(bandwidthText));
     emit deviceConnected(true);
     return true;
 #endif
@@ -242,9 +287,12 @@ void PlutoReceiver::run() {
     while (running_) {
         const double newGain = pendingGain_.exchange(-1000.0);
         if (newGain > -999.0 && rxPhy_) {
-            if (iio_channel_attr_write_double(rxPhy_, "hardwaregain", newGain) >= 0) {
-                gainDb_ = newGain;
-                emit statusMessage(QStringLiteral("Pluto gain set to %1 dB").arg(newGain, 0, 'f', 1));
+            bool limited = false;
+            const double applied = writeRxGain(rxPhy_, newGain, &limited);
+            if (!std::isnan(applied)) {
+                gainDb_ = applied;
+                emit statusMessage(limited ? QStringLiteral("Pluto gain limited to %1 dB (the AD9361 accepts no more at this frequency)").arg(applied, 0, 'f', 1)
+                                           : QStringLiteral("Pluto gain set to %1 dB").arg(applied, 0, 'f', 1));
             } else {
                 emit statusMessage(QStringLiteral("Setting the Pluto gain to %1 dB failed").arg(newGain, 0, 'f', 1));
             }

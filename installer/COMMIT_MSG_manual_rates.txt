@@ -1,0 +1,12 @@
+Manual sample rate and RF bandwidth, bandwidth defaults to None, Pluto gain limit
+
+- Sample rate and RF bandwidth each get a "Manual" entry that takes any value
+  (MS/s and MHz). The preset entries stay.
+- RF bandwidth starts on None on every launch; a satellite choice no longer
+  moves it. None sends no bandwidth limit: the Pluto opens its analog filter to
+  follow the sample rate, RTL-SDR and HackRF use their automatic bandwidth.
+- A manual PlutoSDR bandwidth outside 0.2-56 MHz is clamped instead of refused.
+- IQ playback: Max plays the full file, and Range defaults to Full file.
+- PlutoSDR: a gain above what the AD9361 accepts at the tuned frequency (about
+  71 dB near 1.7 GHz) no longer stops the receiver from starting. It is stepped
+  down to the highest accepted value and the status bar says so.

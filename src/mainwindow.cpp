@@ -386,11 +386,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         applySatelliteSelection();
         updateInputUi();
     });
-    connect(wavSpeed_, &QComboBox::currentIndexChanged, this, [this](int idx) {
+    connect(wavSpeed_, &QComboBox::currentIndexChanged, this, [this](int) {
         if (!wavRange_) return;
-        // User workflow: Max = first 50% for deterministic regression;
-        // Real-time/4x = full file.
-        wavRange_->setCurrentIndex(idx == 2 ? 1 : 0);
+        // Every playback mode, Max included, plays the full file; Range can still be narrowed by hand.
+        wavRange_->setCurrentIndex(0);
     });
     updateInputUi();
 
@@ -593,9 +592,8 @@ void MainWindow::applySatelliteSelection() {
     // The two services need different demodulator settings, so the control panel is biased
     // towards the right ones rather than left at whatever the previous spacecraft needed.
     const bool rtlInput = inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::Rtl);
-    const auto setBandwidthPreset = [this, rtlInput](int hz) {
-        if (bandwidth_) bandwidth_->setCurrentIndex(bandwidth_->findData(rtlInput && hz > 2400000 ? 0 : hz));
-    };
+    // The RF bandwidth box belongs to the user: it starts on None and a satellite choice no longer moves it.
+    const auto setBandwidthPreset = [rtlInput](int hz) { (void)rtlInput; (void)hz; };
     if(satelliteId==12) {
         if(sampleRate_)sampleRate_->setCurrentText(QStringLiteral("6.000 MS/s"));
         setBandwidthPreset(5200000);
@@ -834,7 +832,7 @@ void MainWindow::refreshSystemStatus() {
     else if (decoding) state = QStringLiteral("RX IDLE · DECODER ARMED");
     else state = QStringLiteral("IDLE · READY");
     systemPage_->setStationSummary(state, source,
-        sampleRate_ ? sampleRate_->currentText() : QStringLiteral("—"),
+        sampleRate_ ? QStringLiteral("%1 MS/s").arg(sampleRateHz() / 1e6, 0, 'f', 3) : QStringLiteral("—"),
         bandwidth_ ? bandwidth_->currentText() : QStringLiteral("—"),
         gain_ ? gain_->value() : 0.0);
 }
@@ -891,7 +889,7 @@ void MainWindow::startRx() {
         wavReceiver_->setFraction(fraction);
         // A raw I/Q file carries no rate of its own unless a sidecar or its name says it; the
         // Sample Rate box ("2.500 MS/s") is the fallback.
-        wavReceiver_->setRawFallbackRate(sampleRate_ ? sampleRate_->currentText().section(QLatin1Char(' '), 0, 0).toDouble() * 1e6 : 0.0);
+        wavReceiver_->setRawFallbackRate(sampleRate_ ? sampleRateHz() : 0.0);
         if (decoder_) decoder_->setIngressBackpressureEnabled(true);
 
         // IMPORTANT: parse the WAV header before the worker starts emitting IQ.
@@ -944,18 +942,15 @@ void MainWindow::startRx() {
     // GK-2A HRIT from an RTL-SDR is an experiment at 3.2 MS/s, the most it delivers: the signal is 4.5 MHz
     // wide, so the roll-off is cut off (see processHritSamples). Any other rate cannot work.
     const bool rtlHrit = inputSource_ && inputSource_->currentIndex() == 1 && selectedSatelliteName_==QStringLiteral("GK-2A HRIT");
-    if (rtlHrit && sampleRate_ && sampleRate_->currentText() != QStringLiteral("3.200 MS/s")) {
+    if (rtlHrit && sampleRate_ && std::abs(sampleRateHz() - 3200000.0) > 1.0) {
         statusBar()->showMessage(QStringLiteral("With an RTL-SDR, GK-2A HRIT can only be demodulated experimentally at 3.2 MS/s (the signal is 4.5 MHz wide, costing about 2–3 dB of sensitivity); select 3.200 MS/s, or use a Pluto / file input."),12000);
         return;
     }
     if (inputSource_ && inputSource_->currentIndex() == 1) {
-        const std::array<double, 10> rtlRates{{6000000.0, 5000000.0, 4000000.0, 3000000.0,
-                                               2500000.0, 2400000.0, 2000000.0, 8000000.0, 10000000.0, 3200000.0}};
-        if (sampleRate_->currentIndex() < 0 ||
-            (rtlRates[static_cast<std::size_t>(sampleRate_->currentIndex())] > 2400000.0 &&
-             !(rtlHrit && rtlRates[static_cast<std::size_t>(sampleRate_->currentIndex())] == 3200000.0)))
+        if (sampleRateHz() <= 0.0 ||
+            (sampleRateHz() > 2400000.0 && !(rtlHrit && sampleRateHz() == 3200000.0)))
             sampleRate_->setCurrentText(QStringLiteral("2.400 MS/s"));
-        const double rtlRate = rtlRates[static_cast<std::size_t>(sampleRate_->currentIndex())];
+        const double rtlRate = sampleRateHz();
         if (decoder_) decoder_->setIngressBackpressureEnabled(true);
         const QString sourceName = QStringLiteral("RTL-SDR USB device %1").arg(rtlDeviceIndex_->value());
         if (decoderThread_ && decoderThread_->isRunning()) {
@@ -969,7 +964,7 @@ void MainWindow::startRx() {
         }
         // HRIT: tuner bandwidth 0 = automatic (follows the sample rate); the 1 MHz the box would give
         // is far too narrow for a 4.5 MHz signal.
-        const double bw = bandwidth_->currentData().toDouble();
+        const double bw = rfBandwidthHz();   // None = 0 = automatic
         if (std::abs(frequencyShiftHz()) >= 0.45 * rtlRate) {
             if (decoder_) decoder_->setIngressBackpressureEnabled(false);
             statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
@@ -989,13 +984,11 @@ void MainWindow::startRx() {
 
     if (inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::HackRf)) {
         // HackRF One (issue #2): 2-20 MS/s; the rates in the box from 2 MS/s up all work.
-        const std::array<double, 10> hackrfRates{{6000000.0, 5000000.0, 4000000.0, 3000000.0,
-                                                  2500000.0, 2400000.0, 2000000.0, 8000000.0, 10000000.0, 3200000.0}};
-        if (sampleRate_->currentIndex() < 0 || sampleRate_->currentIndex() >= static_cast<int>(hackrfRates.size())) {
-            statusBar()->showMessage(QStringLiteral("Choose a sample rate in Sample Rate first."), 8000);
+        const double rate = sampleRateHz();
+        if (rate < 2000000.0 || rate > 20000000.0) {
+            statusBar()->showMessage(QStringLiteral("HackRF One runs at 2 to 20 MS/s: choose a rate in Sample Rate first."), 8000);
             return;
         }
-        const double rate = hackrfRates[static_cast<std::size_t>(sampleRate_->currentIndex())];
         const double shift = frequencyShiftHz();
         if (std::abs(shift) >= 0.45 * rate) {
             statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
@@ -1013,7 +1006,7 @@ void MainWindow::startRx() {
             decoder_->setSampleRate(rate);
             decoder_->setSourceLabel(sourceName);
         }
-        hackrfReceiver_->setParameters(freq_->value() * 1e6, rate, bandwidth_->currentData().toDouble(), gain_->value(),
+        hackrfReceiver_->setParameters(freq_->value() * 1e6, rate, rfBandwidthHz(), gain_->value(),
                                        static_cast<unsigned>(hackrfDeviceIndex_->value()), hackrfAntennaPower_->isChecked());
         hackrfReceiver_->setFrequencyShift(shift);
         nadirstation::log::write(QStringLiteral("GUI startRx: HackRF starting; freq=%1 Hz, shift=%2 Hz, rate=%3 Hz, gain=%4")
@@ -1032,15 +1025,13 @@ void MainWindow::startRx() {
     if (decoder_) decoder_->setIngressBackpressureEnabled(true);
     QMetaObject::invokeMethod(decoder_.get(), [this] { decoder_->setSourceLabel(QStringLiteral("PlutoSDR IP 192.168.3.10")); }, Qt::QueuedConnection);
     const double freqHz = freq_->value() * 1e6;
-    const std::array<double, 10> rates{{6000000.0, 5000000.0, 4000000.0, 3000000.0,
-                                        2500000.0, 2400000.0, 2000000.0, 8000000.0, 10000000.0, 3200000.0}};
-    if (sampleRate_->currentIndex() < 0 || sampleRate_->currentIndex() >= static_cast<int>(rates.size())) {
+    const double sr = sampleRateHz();
+    if (sr <= 0.0) {
         if (decoder_) decoder_->setIngressBackpressureEnabled(false);
         statusBar()->showMessage(QStringLiteral("Choose a sample rate in Sample Rate first."), 8000);
         return;
     }
-    const double sr = rates[static_cast<std::size_t>(sampleRate_->currentIndex())];
-    const double bw = bandwidth_->currentData().toDouble();
+    const double bw = rfBandwidthHz();   // None = 0 = automatic
     receiver_->setIp(QStringLiteral(NADIRSTATION_DEFAULT_PLUTO_IP));
     if (std::abs(frequencyShiftHz()) >= 0.45 * sr) {
         if (decoder_) decoder_->setIngressBackpressureEnabled(false);
@@ -1272,19 +1263,21 @@ void MainWindow::updateInputUi() {
     if (gain_) gain_->setEnabled(!wav);
     // For a raw I/Q file the Sample Rate box is the fallback rate, so it stays usable.
     const bool rawFile = wav && wavPath_ && WavReceiver::isRawIq(wavPath_->text().trimmed());
-    if (sampleRate_) sampleRate_->setEnabled(!wav || (rawFile && !running));
-    if (bandwidth_) {
-        const int wide = bandwidth_->findData(5200000);
-        const int automatic = bandwidth_->findData(0);
-        if (auto* model = qobject_cast<QStandardItemModel*>(bandwidth_->model())) {
-            if (auto* item = model->item(wide)) item->setEnabled(!rtl);
-            if (auto* item = model->item(automatic)) item->setEnabled(rtl || hackrf);
+    if (sampleRate_) {
+        const bool rateEditable = !wav || (rawFile && !running);
+        sampleRate_->setEnabled(rateEditable);
+        if (sampleRateManual_) {
+            sampleRateManual_->setVisible(sampleRate_->currentData().toInt() == -1);
+            sampleRateManual_->setEnabled(rateEditable);
         }
-        if (rtl && (bandwidth_->currentIndex() == wide || selectedSatelliteName_ == QStringLiteral("GK-2A HRIT")))
-            bandwidth_->setCurrentIndex(automatic);
-        else if (!rtl && !hackrf && bandwidth_->currentIndex() == automatic)
-            bandwidth_->setCurrentIndex(bandwidth_->findData(2000000));
-        bandwidth_->setEnabled(!wav && !running);
+    }
+    if (bandwidth_) {
+        const bool editable = !wav && !running;
+        bandwidth_->setEnabled(editable);
+        if (bandwidthManual_) {
+            bandwidthManual_->setVisible(bandwidth_->currentData().toInt() == -1);
+            bandwidthManual_->setEnabled(editable);
+        }
     }
     if (rtlOptions_) rtlOptions_->setVisible(rtl);
     if (rtlDeviceIndex_) rtlDeviceIndex_->setEnabled(rtl && !running);
@@ -1601,4 +1594,18 @@ void MainWindow::runStopStress(const QString& wavPath, int cycles, const QString
 
 double MainWindow::frequencyShiftHz() const {
     return freqShift_ ? freqShift_->value() * 1e3 : 0.0;
+}
+
+double MainWindow::rfBandwidthHz() const {
+    if (!bandwidth_) return 0.0;
+    if (bandwidth_->currentData().toInt() == -1)   // "Manual": the value typed next to the box, in MHz
+        return bandwidthManual_ ? bandwidthManual_->value() * 1e6 : 0.0;
+    return bandwidth_->currentData().toDouble();   // 0 = None
+}
+
+double MainWindow::sampleRateHz() const {
+    if (!sampleRate_) return 0.0;
+    if (sampleRate_->currentData().toInt() == -1)   // "Manual": the value typed next to the box, in MS/s
+        return sampleRateManual_ ? std::round(sampleRateManual_->value() * 1e6) : 0.0;
+    return std::round(sampleRate_->currentText().section(QLatin1Char(' '), 0, 0).toDouble() * 1e6);   // "2.500 MS/s"
 }
