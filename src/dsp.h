@@ -310,4 +310,39 @@ DPSKResult differentialDpsk660k(const std::vector<std::complex<float>>& iq,
                                  int polarity = 0,
                                  uint8_t* nrzmLastBit = nullptr);
 
+
+// Moves the whole capture by a fixed frequency (issue #4, "decoder frequency shift"). The receiver
+// is tuned `shiftHz` away from the downlink, so the SDR's DC spike does not sit on the signal; this
+// mixes the signal back to 0 Hz before anything else sees it. With the tuner at f + shift the wanted
+// signal arrives at -shift, and multiplying by exp(+j*2*pi*shift*t) brings it to the centre; the DC
+// spike then lies at +shift, outside the decoder's matched filter when the shift is larger than
+// half the signal's width. The phase runs on across blocks, so block boundaries leave no step.
+class FrequencyShifter {
+public:
+    void configure(double shiftHz, double sampleRate) {
+        shiftHz_ = shiftHz;
+        step_ = (sampleRate > 0.0) ? 2.0 * 3.14159265358979323846 * shiftHz / sampleRate : 0.0;
+        phase_ = 0.0;
+    }
+    bool active() const { return shiftHz_ != 0.0 && step_ != 0.0; }
+    double shiftHz() const { return shiftHz_; }
+    void process(std::complex<float>* data, std::size_t n) {
+        if (!active() || n == 0) return;
+        // A rotator in double precision, re-anchored every block from the exact phase: no drift in
+        // amplitude or frequency however long the pass is.
+        std::complex<double> rot(std::cos(phase_), std::sin(phase_));
+        const std::complex<double> step(std::cos(step_), std::sin(step_));
+        for (std::size_t i = 0; i < n; ++i) {
+            data[i] = std::complex<float>(std::complex<double>(data[i]) * rot);
+            rot *= step;
+            if ((i & 4095u) == 4095u) rot /= std::abs(rot);
+        }
+        phase_ = std::fmod(phase_ + step_ * static_cast<double>(n), 2.0 * 3.14159265358979323846);
+    }
+private:
+    double shiftHz_ = 0.0;
+    double step_ = 0.0;
+    double phase_ = 0.0;
+};
+
 }

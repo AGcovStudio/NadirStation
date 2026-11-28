@@ -2,7 +2,7 @@
 
 **气象卫星接收与处理软件 · A meteorological-satellite reception and processing station**
 
-by AGcov (BI2QYN) · 版本 2.0.0 · [AGPL-3.0](LICENSE)
+by AGcov (BI2QYN) · 版本 2.1.0 · [AGPL-3.0](LICENSE)
 
 NADIR Station 是一套运行在 Windows 上的 L 波段气象卫星地面站软件。它从 SDR 采集基带信号，完成解调、同步、纠错和数据层解析，再生成图像与 L1/L2 产品。整条链路自己实现，接收软判决信息，不依赖其他解码器。
 
@@ -25,9 +25,9 @@ NADIR Station is a Windows ground-station application for L-band weather satelli
 | MetOp | AHRPT | 1701.3 MHz | QPSK 2.33 Msym/s, Viterbi r=3/4, RS |
 | METEOR-M | HRPT | 1700.0 MHz | PM / Manchester 665.4 kbit/s |
 
-接收设备：ADALM-PLUTO（libiio，默认地址 `192.168.3.10`，可在 CMake 中用 NADIRSTATION_DEFAULT_PLUTO_IP 修改）、RTL-SDR（运行时加载 `rtlsdr.dll`），也可以回放 `.cs16 / .cs8 / .cu8 / .wav` 录音。
+接收设备：ADALM-PLUTO（libiio，默认地址 `192.168.3.10`，可在 CMake 中用 NADIRSTATION_DEFAULT_PLUTO_IP 修改）、RTL-SDR（运行时加载 `rtlsdr.dll` / `librtlsdr.so`）、HackRF One（运行时加载 `hackrf.dll` / `libhackrf.so.0`），也可以回放 `.cs16 / .cs8 / .cu8 / .wav` 录音。实时输入可设“Frequency shift”：接收机偏开下行频率调谐，再在软件里把信号挪回中心，让 DC 尖峰落在信号旁边。
 
-Receivers: ADALM-PLUTO (libiio, default `192.168.3.10`, change with NADIRSTATION_DEFAULT_PLUTO_IP), RTL-SDR (loads `rtlsdr.dll` at run time), or playback of `.cs16 / .cs8 / .cu8 / .wav` recordings.
+Receivers: ADALM-PLUTO (libiio, default `192.168.3.10`, change with NADIRSTATION_DEFAULT_PLUTO_IP), RTL-SDR (loads `rtlsdr.dll` / `librtlsdr.so` at run time), HackRF One (loads `hackrf.dll` / `libhackrf.so.0` at run time), or playback of `.cs16 / .cs8 / .cu8 / .wav` recordings. Live inputs take a *Frequency shift*: the SDR is tuned off the downlink and the signal is moved back in software, so the DC spike sits beside the signal instead of on it.
 
 ## 解码门限 · Decoding thresholds
 
@@ -82,7 +82,20 @@ build_windows.bat
 
 The output `build\NADIR_Station.exe` is deployed with the Qt runtime and `resources\`. Without libiio the build falls back to RTL-SDR and file playback only.
 
-Linux（实验性 · experimental）：`./build_linux.sh`
+## 构建 · Building (GNU/Linux)
+
+实验性：贡献者在 Debian testing（forky）上编译运行过 · Experimental: built and run by a contributor on Debian testing (forky):
+
+```sh
+sudo apt install build-essential cmake qt6-base-dev libgl-dev pkg-config
+# 可选 · optional: Pluto / RTL-SDR / HackRF
+sudo apt install libiio-dev librtlsdr0 libhackrf0
+./build_linux.sh            # -> build/bin/NADIR_Station
+```
+
+RTL-SDR 和 HackRF 在运行时加载，编译时不需要它们的开发包；USB 设备需要相应的 udev 规则（随 `rtl-sdr`、`hackrf` 软件包安装）。
+
+RTL-SDR and HackRF are loaded at run time, so their development packages are not needed to build; the USB devices need the udev rules that come with the `rtl-sdr` and `hackrf` packages.
 
 ## 未随源码分发的文件 · Not included
 

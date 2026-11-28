@@ -1,0 +1,8 @@
+NADIR Station 2.1.0: frequency shift, HackRF One, GNU/Linux build
+
+- Decoder frequency shift: tune the SDR off the downlink and move the signal
+  back in software, so the DC spike sits beside the signal (Pluto, RTL-SDR,
+  HackRF). Closes #4.
+- HackRF One input, libhackrf loaded at run time. Closes #2.
+- GNU/Linux build fixes from PR #3 (YZYMC), Linux build notes. Refs #1.
+- Windows 10/11 installer script (Inno Setup).

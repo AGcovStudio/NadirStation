@@ -5,4 +5,4 @@ set -euo pipefail
 cd "$(dirname "$0")"
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNADIRSTATION_BUILD_PLUTO=ON
 cmake --build build -j"$(nproc)"
-echo "Built: build/NADIR_Station"
+if [ -x build/bin/NADIR_Station ]; then echo "Built: build/bin/NADIR_Station"; else echo "Built: build/NADIR_Station"; fi

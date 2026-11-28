@@ -25,6 +25,8 @@ public:
     void setParameters(double frequencyHz, double sampleRate, double bandwidthHz,
                        double gainDb, unsigned deviceIndex, bool autoBiasTee);
     void setSpectrumSettings(std::size_t fftSize, nadirstation::dsp::SpectrumWindow window);
+    // Tune this far from the downlink and mix the signal back (issue #4). 0 = off; next start().
+    void setFrequencyShift(double hz) { frequencyShiftHz_ = hz; }
     bool start();
     void stop();
     bool isRunning() const { return running_.load(); }
@@ -65,6 +67,8 @@ private:
     double sampleRate_ = 2400000.0;
     double bandwidthHz_ = 2000000.0;
     double gainDb_ = 35.0;
+    double frequencyShiftHz_ = 0.0;
+    nadirstation::dsp::FrequencyShifter shifter_;   // stream callback only
     unsigned deviceIndex_ = 0;
     bool autoBiasTee_ = true;
     std::thread worker_;

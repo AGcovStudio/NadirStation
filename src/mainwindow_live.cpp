@@ -81,7 +81,7 @@ QWidget* MainWindow::makeControlPanel() {
     auto* sourceBox = new QWidget;
     Form sourceForm(sourceBox);
     inputSource_ = new QComboBox;
-    inputSource_->addItems({"Pluto IP", "RTL-SDR", "File input (WAV / cs16 / cs8)"});
+    inputSource_->addItems({"Pluto IP", "RTL-SDR", "File input (WAV / cs16 / cs8)", "HackRF One"});
     sourceForm.row(QStringLiteral("Input"), inputSource_);
 
     rtlOptions_ = new QWidget;
@@ -98,6 +98,22 @@ QWidget* MainWindow::makeControlPanel() {
     }
     sourceForm.row(QString(), rtlOptions_);
     rtlOptions_->hide();
+
+    hackrfOptions_ = new QWidget;
+    {
+        Form hackrfForm(hackrfOptions_);
+        hackrfDeviceIndex_ = new QSpinBox;
+        hackrfDeviceIndex_->setRange(0, 15);
+        hackrfDeviceIndex_->setValue(0);
+        hackrfDeviceIndex_->setToolTip(QStringLiteral("HackRF index in libhackrf's device list, counting from 0."));
+        hackrfForm.row(QStringLiteral("Device index"), hackrfDeviceIndex_);
+        hackrfAntennaPower_ = new QCheckBox(QStringLiteral("Antenna port power (3.3 V)"));
+        hackrfAntennaPower_->setChecked(false);
+        hackrfAntennaPower_->setToolTip(QStringLiteral("Powers an LNA through the antenna port. Leave off unless the LNA needs it."));
+        hackrfForm.row(QString(), hackrfAntennaPower_);
+    }
+    sourceForm.row(QString(), hackrfOptions_);
+    hackrfOptions_->hide();
 
     auto* wavRow = new QWidget;
     auto* wavLay = new QHBoxLayout(wavRow);
@@ -140,6 +156,25 @@ QWidget* MainWindow::makeControlPanel() {
     freq_->setSingleStep(0.001);
     tuneForm.row(QStringLiteral("Centre frequency"), freq_);
 
+    // Issue #4: tune the SDR this far from the downlink and move the signal back digitally, so the
+    // SDR's DC spike (HackRF, Pluto, RTL-SDR all have one at the tuned frequency) falls outside the
+    // signal. Remembered; applies to the live inputs on the next Start.
+    freqShift_ = new QDoubleSpinBox;
+    freqShift_->setRange(-4000.0, 4000.0);
+    freqShift_->setDecimals(0);
+    freqShift_->setSingleStep(50.0);
+    freqShift_->setSuffix(QStringLiteral(" kHz"));
+    freqShift_->setValue(QSettings(QStringLiteral("AGcov"), QStringLiteral("NadirStation")).value(QStringLiteral("rx/frequencyShiftKHz"), 0.0).toDouble());
+    freqShift_->setToolTip(QStringLiteral("Decoder frequency shift: the receiver is tuned this far from the centre frequency and the "
+                                          "signal is moved back in software, so the DC spike lands beside the signal instead of on it. "
+                                          "Choose more than half the signal's width and less than half the sample rate minus half the "
+                                          "signal's width (for example 400 kHz for FY-2 S-VISSR at 2.5 MS/s). Applies on the next Start; "
+                                          "not used for file input."));
+    connect(freqShift_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [](double v) {
+        QSettings(QStringLiteral("AGcov"), QStringLiteral("NadirStation")).setValue(QStringLiteral("rx/frequencyShiftKHz"), v);
+    });
+    tuneForm.row(QStringLiteral("Frequency shift"), freqShift_);
+
     gain_ = new QDoubleSpinBox;
     gain_->setRange(-30, 73);
     gain_->setValue(35);
@@ -168,7 +203,7 @@ QWidget* MainWindow::makeControlPanel() {
     bandwidth_->addItem(QStringLiteral("1.800 MHz"), 1800000);
     bandwidth_->addItem(QStringLiteral("1.000 MHz"), 1000000);
     bandwidth_->addItem(QStringLiteral("5.200 MHz"), 5200000);
-    bandwidth_->addItem(QStringLiteral("Automatic (RTL-SDR)"), 0);
+    bandwidth_->addItem(QStringLiteral("Automatic (RTL-SDR / HackRF)"), 0);
     // S-VISSR's transmitted channel bandwidth is 2 MHz; narrowing this to 1 MHz rejects valid sidebands.
     bandwidth_->setCurrentIndex(0);
     tuneForm.row(QStringLiteral("RF bandwidth"), bandwidth_);

@@ -23,6 +23,7 @@
 #include "plutoreceiver.h"
 #include "wavreceiver.h"
 #include "rtlsdrreceiver.h"
+#include "hackrfreceiver.h"
 #include "nadirstationdecoder.h"
 #include "spectrumwidget.h"
 #include "constellationwidget.h"
@@ -212,7 +213,8 @@ private:
     QElapsedTimer recordClock_;
     std::shared_ptr<nadirstation::IqRecorder> iqRecorder_ = std::make_shared<nadirstation::IqRecorder>();
     void startIqRecording(double sampleRate, double centreHz, bool rtl);
-    enum class InputSource { None = -1, Pluto, Rtl, File };
+    // Values are the Input box indices.
+    enum class InputSource { None = -1, Pluto, Rtl, File, HackRf };
     InputSource activeInput_ = InputSource::None;
     void finishRx(bool inputFinished);
     void stopIqRecording();
@@ -222,6 +224,11 @@ private:
     QWidget* rtlOptions_ = nullptr;
     QSpinBox* rtlDeviceIndex_ = nullptr;
     QCheckBox* rtlAutoBiasTee_ = nullptr;
+    QWidget* hackrfOptions_ = nullptr;
+    QSpinBox* hackrfDeviceIndex_ = nullptr;
+    QCheckBox* hackrfAntennaPower_ = nullptr;
+    QDoubleSpinBox* freqShift_ = nullptr;   // kHz, issue #4
+    double frequencyShiftHz() const;
     QLineEdit* wavPath_ = nullptr;
     QPushButton* wavBrowse_ = nullptr;
     QComboBox* wavSpeed_ = nullptr;
@@ -323,6 +330,7 @@ private:
     std::unique_ptr<PlutoReceiver> receiver_;
     std::unique_ptr<WavReceiver> wavReceiver_;
     std::unique_ptr<RtlSdrReceiver> rtlReceiver_;
+    std::unique_ptr<HackRfReceiver> hackrfReceiver_;
     std::unique_ptr<NadirStationDecoder> decoder_;
     QThread* decoderThread_ = nullptr;
     struct DisplayMailbox {

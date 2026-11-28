@@ -35,8 +35,7 @@
 #include "ggak.h"
 #include "pipelinediag.h"
 
-Q_DECLARE_METATYPE(std::shared_ptr<std::vector<std::complex<float>>>)
-Q_DECLARE_METATYPE(std::vector<float>)
+#include "iqmetatypes.h"
 
 namespace nadirstation::gvar { class Engine; }
 namespace nadirstation::goessd { class Engine; }

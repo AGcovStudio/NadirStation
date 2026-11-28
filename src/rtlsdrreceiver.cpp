@@ -127,6 +127,7 @@ void RtlSdrReceiver::consume(const unsigned char* bytes, std::uint32_t length, d
         (*samples)[i] = {static_cast<float>(bytes[2 * i]) / 127.5f - 1.0f,
                          static_cast<float>(bytes[2 * i + 1]) / 127.5f - 1.0f};
     }
+    shifter_.process(samples->data(), sampleCount);
     // Waterfall rows at a fixed cadence in stream time; the SNR metrics stay at 10 per second.
     float latestSnr = 0.0f;
     bool haveSpectrum = false;
@@ -258,7 +259,7 @@ void RtlSdrReceiver::run() {
         biasEnabled = true;
     }
 
-    bool configured = setU32(setFrequency, static_cast<std::uint32_t>(std::llround(frequencyHz_)), QStringLiteral("centre frequency")) &&
+    bool configured = setU32(setFrequency, static_cast<std::uint32_t>(std::llround(frequencyHz_ + frequencyShiftHz_)), QStringLiteral("centre frequency")) &&
         setU32(setRate, static_cast<std::uint32_t>(std::llround(sampleRate_)), QStringLiteral("sample rate")) &&
         (!setBandwidth || setU32(setBandwidth, static_cast<std::uint32_t>(std::llround(bandwidthHz_)), QStringLiteral("bandwidth")));
     if (configured) {
@@ -307,6 +308,10 @@ void RtlSdrReceiver::run() {
     emit deviceConnected(true);
 
     spectrumTap_.reset();
+    shifter_.configure(frequencyShiftHz_, actualRate);
+    if (shifter_.active())
+        emit statusMessage(QStringLiteral("RTL-SDR tuned %1 kHz off the downlink; the signal is moved back digitally")
+                               .arg(frequencyShiftHz_ / 1e3, 0, 'f', 1));
     rateWindowOpen_ = false;
     droppedSamples_.store(0);
     {

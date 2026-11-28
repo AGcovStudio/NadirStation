@@ -75,7 +75,7 @@ bool PlutoReceiver::configurePluto() {
         if (rc < 0) emit statusMessage(QStringLiteral("Pluto setting failed: %1 (rc=%2)").arg(what).arg(rc));
         return rc < 0;
     };
-    if (failAttr(iio_channel_attr_write_longlong(lo_, "frequency", static_cast<long long>(frequencyHz_)), "LO frequency")) return false;
+    if (failAttr(iio_channel_attr_write_longlong(lo_, "frequency", static_cast<long long>(std::llround(frequencyHz_ + frequencyShiftHz_))), "LO frequency")) return false;
     if (failAttr(iio_channel_attr_write(rx, "gain_control_mode", "manual"), "gain_control_mode")) return false;
     rxPhy_ = rx;
     pendingGain_.store(-1000.0);   // start() applies gainDb_ below
@@ -215,6 +215,10 @@ void PlutoReceiver::run() {
         return;
     }
     spectrumTap_.reset();
+    shifter_.configure(frequencyShiftHz_, actualSampleRate_);
+    if (shifter_.active())
+        emit statusMessage(QStringLiteral("Pluto tuned %1 kHz off the downlink; the signal is moved back digitally")
+                               .arg(frequencyShiftHz_ / 1e3, 0, 'f', 1));
     const bool earlyEmit = actualSampleRate_ >= 4.0e6;
 #ifdef _WIN32
     // The capture thread must not wait behind the JPEG decoder or the GUI for the CPU.
@@ -284,6 +288,7 @@ void PlutoReceiver::run() {
             block[n++] = {static_cast<float>(I) / 2048.0f, static_cast<float>(Q) / 2048.0f};
         }
         if (n == 0) continue;
+        shifter_.process(block.data(), n);
         auto samples = std::make_shared<std::vector<std::complex<float>>>(block.begin(), block.begin() + static_cast<std::ptrdiff_t>(n));
         // Hand the samples to the decoder before the spectrum work, so the next refill is not
         // delayed by an FFT. The decoder only reads the block.

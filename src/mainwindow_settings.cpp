@@ -287,7 +287,7 @@ QWidget* MainWindow::makeSettingsPage() {
         localTimeLabel_->setText(now.toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss")));
         utcTimeLabel_->setText(now.toUTC().toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss 'UTC'")));
         const bool receiving = (receiver_ && receiver_->isRunning()) || (wavReceiver_ && wavReceiver_->isRunning()) ||
-                               (rtlReceiver_ && rtlReceiver_->isRunning());
+                               (rtlReceiver_ && rtlReceiver_->isRunning()) || (hackrfReceiver_ && hackrfReceiver_->isRunning());
         const bool decoding = decoder_ && decoder_->enabled();
         stationSettingsStatus_->setText(QStringLiteral("RX %1   ·   Decode %2\n%3")
             .arg(receiving ? QStringLiteral("RUNNING") : QStringLiteral("IDLE"),

@@ -19,6 +19,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     receiver_ = std::make_unique<PlutoReceiver>();
     wavReceiver_ = std::make_unique<WavReceiver>();
     rtlReceiver_ = std::make_unique<RtlSdrReceiver>();
+    hackrfReceiver_ = std::make_unique<HackRfReceiver>();
     decoder_ = std::make_unique<NadirStationDecoder>();
     QSettings appSettings(QStringLiteral("AGcov"), QStringLiteral("NadirStation"));
     const QString defaultOutput = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("FY2_DATA"));
@@ -124,11 +125,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     const auto toRecorder = [rec = iqRecorder_](const std::shared_ptr<std::vector<std::complex<float>>>& s) { rec->push(s); };
     connect(receiver_.get(), &PlutoReceiver::samplesReady, this, toRecorder, Qt::DirectConnection);
     connect(rtlReceiver_.get(), &RtlSdrReceiver::samplesReady, this, toRecorder, Qt::DirectConnection);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::samplesReady, this, toRecorder, Qt::DirectConnection);
     connect(recordBtn_, &QPushButton::toggled, this, [this](bool armed) {
         if (!armed) {
             stopIqRecording();
         } else if (rtlReceiver_->isRunning()) {
             startIqRecording(rtlReceiver_->sampleRate(), rtlReceiver_->frequencyHz(), true);
+        } else if (hackrfReceiver_->isRunning()) {
+            startIqRecording(hackrfReceiver_->sampleRate(), hackrfReceiver_->frequencyHz(), false);
         } else if (receiver_->isRunning()) {
             startIqRecording(receiver_->sampleRate(), receiver_->frequencyHz(), false);
         }
@@ -143,6 +147,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     };
     connect(receiver_.get(), &PlutoReceiver::statusMessage, this, logLoss);
     connect(rtlReceiver_.get(), &RtlSdrReceiver::statusMessage, this, logLoss);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::statusMessage, this, logLoss);
     recordTimer_ = new QTimer(this);
     recordTimer_->setInterval(1000);
     connect(recordTimer_, &QTimer::timeout, this, [this] {
@@ -235,6 +240,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(rtlReceiver_.get(), &RtlSdrReceiver::finished, this, [this] {
         if (activeInput_ == InputSource::Rtl && !rtlReceiver_->isRunning()) finishRx(true);
+    }, Qt::QueuedConnection);
+    // HackRF One (issue #2): wired exactly like the RTL-SDR.
+    connect(hackrfReceiver_.get(), &HackRfReceiver::samplesReady, decoder_.get(), &NadirStationDecoder::processSamples, Qt::DirectConnection);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::metricsReady, this, &MainWindow::updateMetrics);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::metricsReady, this, [this](float, float, float, double sr) {
+        QMetaObject::invokeMethod(decoder_.get(), [this, sr] { decoder_->setSampleRate(sr); }, Qt::QueuedConnection);
+    });
+    connect(hackrfReceiver_.get(), &HackRfReceiver::spectrumReady, this, [mailbox=displayMailbox_](const std::vector<float>& db, double sr) {
+        std::lock_guard lock(mailbox->mutex);
+        mailbox->spectrum=db;mailbox->sampleRate=sr;
+    }, Qt::DirectConnection);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::statusMessage, this, &MainWindow::updateStatus);
+    connect(hackrfReceiver_.get(), &HackRfReceiver::deviceConnected, this, [this](bool yes) {
+        if (activeInput_ != InputSource::HackRf) return;
+        setConnState(yes ? "HackRF: connected" : "HackRF: offline", yes ? QStringLiteral("ok") : QStringLiteral("warn"));
+    });
+    connect(hackrfReceiver_.get(), &HackRfReceiver::finished, this, [this] {
+        if (activeInput_ == InputSource::HackRf && !hackrfReceiver_->isRunning()) finishRx(true);
     }, Qt::QueuedConnection);
     connect(decoder_.get(), &NadirStationDecoder::statusMessage, this, &MainWindow::updateStatus);
     connect(decoder_.get(), &NadirStationDecoder::symbolConstellation, this, [mailbox=displayMailbox_](const std::shared_ptr<std::vector<std::complex<float>>>& s) {
@@ -403,6 +426,7 @@ MainWindow::~MainWindow() {
     if (iqRecorder_) iqRecorder_->stop();
     if (wavReceiver_) wavReceiver_->stop();
     if (rtlReceiver_) rtlReceiver_->stop();
+    if (hackrfReceiver_) hackrfReceiver_->stop();
     if (decoderThread_) {
         QMetaObject::invokeMethod(decoder_.get(), [this] { decoder_->setEnabled(false); }, Qt::BlockingQueuedConnection);
         decoderThread_->quit();
@@ -637,7 +661,8 @@ void MainWindow::applySatelliteSelection() {
     if (modeNote_ != nullptr) {
         const int source = inputSource_ ? inputSource_->currentIndex() : 0;
         const QString receiverName = source == 1 ? QStringLiteral("RTL-SDR")
-                                   : source == 2 ? QStringLiteral("File input") : QStringLiteral("PlutoSDR");
+                                   : source == 2 ? QStringLiteral("File input")
+                                   : source == 3 ? QStringLiteral("HackRF One") : QStringLiteral("PlutoSDR");
         const QString service = satelliteId == 16 ? QStringLiteral("MetOp AHRPT")
                               : satelliteId == 17 ? QStringLiteral("METEOR HRPT")
                               : satelliteId == 15 ? QStringLiteral("ELEKTRO-L HRIT")
@@ -797,12 +822,12 @@ bool MainWindow::exportGgakPng(const QString& tab, const QString& path) {
 void MainWindow::refreshSystemStatus() {
     if (!systemPage_) return;
     const bool receiving = (receiver_ && receiver_->isRunning()) || (wavReceiver_ && wavReceiver_->isRunning()) ||
-                           (rtlReceiver_ && rtlReceiver_->isRunning());
+                           (rtlReceiver_ && rtlReceiver_->isRunning()) || (hackrfReceiver_ && hackrfReceiver_->isRunning());
     const bool decoding = decoder_ && decoder_->enabled();
-    const QString source = inputSource_ && inputSource_->currentIndex() == 2
-        ? QStringLiteral("WAV playback")
-        : inputSource_ && inputSource_->currentIndex() == 1
-            ? QStringLiteral("RTL-SDR · USB") : QStringLiteral("PlutoSDR · 192.168.3.10");
+    const int sourceIndex = inputSource_ ? inputSource_->currentIndex() : 0;
+    const QString source = sourceIndex == 2 ? QStringLiteral("WAV playback")
+                         : sourceIndex == 1 ? QStringLiteral("RTL-SDR · USB")
+                         : sourceIndex == 3 ? QStringLiteral("HackRF One · USB") : QStringLiteral("PlutoSDR · 192.168.3.10");
     QString state;
     if (receiving && decoding) state = QStringLiteral("RECEIVING · DECODING");
     else if (receiving) state = QStringLiteral("RECEIVING · IDLE DECODE");
@@ -945,12 +970,58 @@ void MainWindow::startRx() {
         // HRIT: tuner bandwidth 0 = automatic (follows the sample rate); the 1 MHz the box would give
         // is far too narrow for a 4.5 MHz signal.
         const double bw = bandwidth_->currentData().toDouble();
+        if (std::abs(frequencyShiftHz()) >= 0.45 * rtlRate) {
+            if (decoder_) decoder_->setIngressBackpressureEnabled(false);
+            statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
+                .arg(0.45 * rtlRate / 1e3, 0, 'f', 0).arg(rtlRate / 1e6, 0, 'f', 3), 10000);
+            return;
+        }
         rtlReceiver_->setParameters(freq_->value() * 1e6, rtlRate, bw, gain_->value(),
                                     static_cast<unsigned>(rtlDeviceIndex_->value()), rtlAutoBiasTee_->isChecked());
+        rtlReceiver_->setFrequencyShift(frequencyShiftHz());
         rtlReceiver_->start();
         activeInput_ = InputSource::Rtl;
         if (recordBtn_ && recordBtn_->isChecked()) startIqRecording(rtlRate, freq_->value() * 1e6, true);
         rxBtn_->setText("Stop RTL-SDR Receiving");
+        updateInputUi();
+        return;
+    }
+
+    if (inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::HackRf)) {
+        // HackRF One (issue #2): 2-20 MS/s; the rates in the box from 2 MS/s up all work.
+        const std::array<double, 10> hackrfRates{{6000000.0, 5000000.0, 4000000.0, 3000000.0,
+                                                  2500000.0, 2400000.0, 2000000.0, 8000000.0, 10000000.0, 3200000.0}};
+        if (sampleRate_->currentIndex() < 0 || sampleRate_->currentIndex() >= static_cast<int>(hackrfRates.size())) {
+            statusBar()->showMessage(QStringLiteral("Choose a sample rate in Sample Rate first."), 8000);
+            return;
+        }
+        const double rate = hackrfRates[static_cast<std::size_t>(sampleRate_->currentIndex())];
+        const double shift = frequencyShiftHz();
+        if (std::abs(shift) >= 0.45 * rate) {
+            statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
+                .arg(0.45 * rate / 1e3, 0, 'f', 0).arg(rate / 1e6, 0, 'f', 3), 10000);
+            return;
+        }
+        if (decoder_) decoder_->setIngressBackpressureEnabled(true);
+        const QString sourceName = QStringLiteral("HackRF One USB device %1").arg(hackrfDeviceIndex_->value());
+        if (decoderThread_ && decoderThread_->isRunning()) {
+            QMetaObject::invokeMethod(decoder_.get(), [this, rate, sourceName] {
+                decoder_->setSampleRate(rate);
+                decoder_->setSourceLabel(sourceName);
+            }, Qt::BlockingQueuedConnection);
+        } else {
+            decoder_->setSampleRate(rate);
+            decoder_->setSourceLabel(sourceName);
+        }
+        hackrfReceiver_->setParameters(freq_->value() * 1e6, rate, bandwidth_->currentData().toDouble(), gain_->value(),
+                                       static_cast<unsigned>(hackrfDeviceIndex_->value()), hackrfAntennaPower_->isChecked());
+        hackrfReceiver_->setFrequencyShift(shift);
+        nadirstation::log::write(QStringLiteral("GUI startRx: HackRF starting; freq=%1 Hz, shift=%2 Hz, rate=%3 Hz, gain=%4")
+            .arg(freq_->value() * 1e6, 0, 'f', 0).arg(shift, 0, 'f', 0).arg(rate, 0, 'f', 0).arg(gain_->value(), 0, 'f', 1));
+        hackrfReceiver_->start();
+        activeInput_ = InputSource::HackRf;
+        if (recordBtn_ && recordBtn_->isChecked()) startIqRecording(rate, freq_->value() * 1e6, false);
+        rxBtn_->setText("Stop HackRF Receiving");
         updateInputUi();
         return;
     }
@@ -971,7 +1042,14 @@ void MainWindow::startRx() {
     const double sr = rates[static_cast<std::size_t>(sampleRate_->currentIndex())];
     const double bw = bandwidth_->currentData().toDouble();
     receiver_->setIp(QStringLiteral(NADIRSTATION_DEFAULT_PLUTO_IP));
+    if (std::abs(frequencyShiftHz()) >= 0.45 * sr) {
+        if (decoder_) decoder_->setIngressBackpressureEnabled(false);
+        statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
+            .arg(0.45 * sr / 1e3, 0, 'f', 0).arg(sr / 1e6, 0, 'f', 3), 10000);
+        return;
+    }
     receiver_->setParameters(freqHz, sr, bw, gain_->value());
+    receiver_->setFrequencyShift(frequencyShiftHz());
     // Blocking, and before the receiver starts. A queued call returns immediately, so the worker
     // could deliver IQ at a rate the decoder had not yet been told -- and the carrier bank is built
     // from that rate once and never rebuilt, which made a wrong value permanent: five demodulators
@@ -989,8 +1067,8 @@ void MainWindow::startRx() {
     } else if (decoder_) {
         decoder_->setSampleRate(sr);
     }
-    nadirstation::log::write(QStringLiteral("GUI startRx: receiver starting; freq=%1 Hz, rate=%2 Hz, bw=%3 Hz, gain=%4")
-        .arg(freqHz, 0, 'f', 0).arg(sr, 0, 'f', 0).arg(bw, 0, 'f', 0).arg(gain_->value(), 0, 'f', 1));
+    nadirstation::log::write(QStringLiteral("GUI startRx: receiver starting; freq=%1 Hz, shift=%5 Hz, rate=%2 Hz, bw=%3 Hz, gain=%4")
+        .arg(freqHz, 0, 'f', 0).arg(sr, 0, 'f', 0).arg(bw, 0, 'f', 0).arg(gain_->value(), 0, 'f', 1).arg(frequencyShiftHz(), 0, 'f', 0));
     nadirstation::log::flush();
     if (!receiver_->start()) {
         decoder_->setIngressBackpressureEnabled(false);
@@ -1080,11 +1158,13 @@ void MainWindow::finishRx(bool inputFinished) {
     if (decoder_) decoder_->setIngressBackpressureEnabled(false);
     if (source == InputSource::File) wavReceiver_->stop();
     if (source == InputSource::Rtl) rtlReceiver_->stop();
+    if (source == InputSource::HackRf) hackrfReceiver_->stop();
     if (source == InputSource::Pluto) receiver_->stop();
     stopIqRecording();
     nadirstation::log::write(QStringLiteral("GUI stopRx: %1 receiver stopped")
         .arg(source == InputSource::File ? QStringLiteral("WAV") :
-             source == InputSource::Rtl ? QStringLiteral("RTL-SDR") : QStringLiteral("Pluto")));
+             source == InputSource::Rtl ? QStringLiteral("RTL-SDR") :
+             source == InputSource::HackRf ? QStringLiteral("HackRF") : QStringLiteral("Pluto")));
     nadirstation::log::flush();
 
     const bool quitAfterDecode = source == InputSource::File && inputFinished && diagnosticWavMode_;
@@ -1181,6 +1261,7 @@ void MainWindow::browseWav() {
 void MainWindow::updateInputUi() {
     const bool wav = inputSource_ && inputSource_->currentIndex() == 2;
     const bool rtl = inputSource_ && inputSource_->currentIndex() == 1;
+    const bool hackrf = inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::HackRf);
     const bool running = activeInput_ != InputSource::None;
     if (inputSource_) inputSource_->setEnabled(!running);
     if (wavPath_) wavPath_->setEnabled(wav && !running);
@@ -1197,23 +1278,29 @@ void MainWindow::updateInputUi() {
         const int automatic = bandwidth_->findData(0);
         if (auto* model = qobject_cast<QStandardItemModel*>(bandwidth_->model())) {
             if (auto* item = model->item(wide)) item->setEnabled(!rtl);
-            if (auto* item = model->item(automatic)) item->setEnabled(rtl);
+            if (auto* item = model->item(automatic)) item->setEnabled(rtl || hackrf);
         }
         if (rtl && (bandwidth_->currentIndex() == wide || selectedSatelliteName_ == QStringLiteral("GK-2A HRIT")))
             bandwidth_->setCurrentIndex(automatic);
-        else if (!rtl && bandwidth_->currentIndex() == automatic)
+        else if (!rtl && !hackrf && bandwidth_->currentIndex() == automatic)
             bandwidth_->setCurrentIndex(bandwidth_->findData(2000000));
         bandwidth_->setEnabled(!wav && !running);
     }
     if (rtlOptions_) rtlOptions_->setVisible(rtl);
     if (rtlDeviceIndex_) rtlDeviceIndex_->setEnabled(rtl && !running);
     if (rtlAutoBiasTee_) rtlAutoBiasTee_->setEnabled(rtl && !running);
+    if (hackrfOptions_) hackrfOptions_->setVisible(hackrf);
+    if (hackrfDeviceIndex_) hackrfDeviceIndex_->setEnabled(hackrf && !running);
+    if (hackrfAntennaPower_) hackrfAntennaPower_->setEnabled(hackrf && !running);
+    if (freqShift_) freqShift_->setEnabled(!wav && !running);
     if (recordBtn_) recordBtn_->setEnabled(!wav);
     if (wav && !(wavReceiver_ && wavReceiver_->isRunning())) {
         setConnState("WAV: ready", QStringLiteral("idle"));
     } else if (rtl && !(rtlReceiver_ && rtlReceiver_->isRunning())) {
         setConnState("RTL-SDR: ready", QStringLiteral("warn"));
-    } else if (!wav && !rtl && !(receiver_ && receiver_->isRunning())) {
+    } else if (hackrf && !(hackrfReceiver_ && hackrfReceiver_->isRunning())) {
+        setConnState("HackRF: ready", QStringLiteral("warn"));
+    } else if (!wav && !rtl && !hackrf && !(receiver_ && receiver_->isRunning())) {
         setConnState("Pluto: offline (simulation)", QStringLiteral("warn"));
     }
 }
@@ -1268,10 +1355,10 @@ void MainWindow::updateMetrics(float snr, float peak, float avg, double sr) {
     // none of them could be read while receiving. A message that is up stays until its own timeout.
     const QString shown = statusBar()->currentMessage();
     if (!shown.isEmpty() && !shown.startsWith(QStringLiteral("RX "))) return;
-    const QString input = inputSource_ && inputSource_->currentIndex() == 1
-        ? QStringLiteral("RTL-SDR USB")
-        : inputSource_ && inputSource_->currentIndex() == 2
-            ? QStringLiteral("WAV input") : QStringLiteral("Pluto 192.168.3.10");
+    const int sourceIndex = inputSource_ ? inputSource_->currentIndex() : 0;
+    const QString input = sourceIndex == 1 ? QStringLiteral("RTL-SDR USB")
+                        : sourceIndex == 2 ? QStringLiteral("WAV input")
+                        : sourceIndex == 3 ? QStringLiteral("HackRF One USB") : QStringLiteral("Pluto 192.168.3.10");
     statusBar()->showMessage(QString("RX %1 MS/s · %2")
         .arg(sr / 1e6, 0, 'f', 3).arg(input));
 }
@@ -1283,6 +1370,7 @@ void MainWindow::applySpectrumSettings() {
     if(receiver_) receiver_->setSpectrumSettings(points,window);
     if(wavReceiver_) wavReceiver_->setSpectrumSettings(points,window);
     if(rtlReceiver_) rtlReceiver_->setSpectrumSettings(points,window);
+    if(hackrfReceiver_) hackrfReceiver_->setSpectrumSettings(points,window);
     statusBar()->showMessage(QStringLiteral("Spectrum: %1 points · %2 · AvgNum %3 (display only)")
         .arg(points).arg(fftWindow_->currentText()).arg(fftAvgNum_->currentText()),3500);
 }
@@ -1332,6 +1420,7 @@ void MainWindow::scheduleCaptureWindow(const QString& startTime, const QString& 
         if (decoder_ && !decoder_->enabled()) startDecode();
         if ((receiver_ && !receiver_->isRunning()) &&
             (!rtlReceiver_ || !rtlReceiver_->isRunning()) &&
+            (!hackrfReceiver_ || !hackrfReceiver_->isRunning()) &&
             (!wavReceiver_ || !wavReceiver_->isRunning())) startRx();
         statusBar()->showMessage(QStringLiteral("Scheduled reception in progress; ends automatically at %1").arg(stopAt.toString(QStringLiteral("HH:mm"))));
     });
@@ -1341,6 +1430,7 @@ void MainWindow::scheduleCaptureWindow(const QString& startTime, const QString& 
     connect(scheduledStop_, &QTimer::timeout, this, [this] {
         nadirstation::log::write(QStringLiteral("scheduled Pluto capture stopping and finalizing"));
         if ((receiver_ && receiver_->isRunning()) || (rtlReceiver_ && rtlReceiver_->isRunning()) ||
+            (hackrfReceiver_ && hackrfReceiver_->isRunning()) ||
             (wavReceiver_ && wavReceiver_->isRunning())) stopRx();
         statusBar()->showMessage(QStringLiteral("Scheduled reception finished; the image is saved and loaded, the current page is unchanged"), 12000);
     });
@@ -1507,4 +1597,8 @@ void MainWindow::runStopStress(const QString& wavPath, int cycles, const QString
     };
     log(QStringLiteral("begin: %1 cycles, sources %2, wav %3").arg(st->cycles).arg(st->sources.join(','), wavPath));
     QTimer::singleShot(1500, this, [next] { (*next)(); });
+}
+
+double MainWindow::frequencyShiftHz() const {
+    return freqShift_ ? freqShift_->value() * 1e3 : 0.0;
 }

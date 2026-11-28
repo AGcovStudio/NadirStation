@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.21)
-project(NadirStation VERSION 2.0.0 LANGUAGES C CXX)
+project(NadirStation VERSION 2.1.0 LANGUAGES C CXX)
+
+if(UNIX AND NOT APPLE)
+    # GNU/Linux-specific temporary fixes (PR #3 by YZYMC)
+    include(GNUInstallDirs)
+
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 
 # MinGW Makefiles are single-configuration generators; `cmake --build --config
 # Release` does not change their compile flags. Default an unset build type to
@@ -61,6 +70,7 @@ set(SOURCES
     src/gvartelemetrywidget.cpp
     src/plutoreceiver.cpp
     src/rtlsdrreceiver.cpp
+    src/hackrfreceiver.cpp
     src/wavreceiver.cpp
     src/nadirstationdecoder.cpp
     src/imageproducts.cpp
@@ -104,6 +114,8 @@ set(HEADERS
     src/gvardoc.h
     src/plutoreceiver.h
     src/rtlsdrreceiver.h
+    src/hackrfreceiver.h
+    src/iqmetatypes.h
     src/wavreceiver.h
     src/nadirstationdecoder.h
     src/imageproducts.h

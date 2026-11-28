@@ -37,6 +37,8 @@ if not exist ".git" (
 git checkout -B %BRANCH% >nul 2>&1
 git config user.name "%COMMIT_NAME%"
 git config user.email "%COMMIT_EMAIL%"
+rem ---- 只对本仓库：不再刷屏提示 "LF will be replaced by CRLF"（仓库里统一存 LF，不影响内容）
+git config core.safecrlf false
 
 echo [2/4] 添加文件（build、录音、密钥已在 .gitignore 中排除）
 git rm -r -q --cached --ignore-unmatch docs/media >nul 2>&1

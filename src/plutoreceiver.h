@@ -24,6 +24,9 @@ public:
     // Change the RX gain while receiving: applied by the worker between two buffer refills. The
     // value passed to setParameters only takes effect on the next start().
     void setGainLive(double gainDb) { pendingGain_.store(gainDb); }
+    // Tune this far from the downlink and mix the signal back (issue #4): keeps the DC spike off
+    // the signal. 0 = off. Takes effect on the next start().
+    void setFrequencyShift(double hz) { frequencyShiftHz_ = hz; }
 
     bool start();
     void stop();
@@ -53,6 +56,8 @@ private:
     double actualSampleRate_ = 6000000.0;
     double bandwidthHz_ = 2000000.0;
     double gainDb_ = 35.0;
+    double frequencyShiftHz_ = 0.0;
+    nadirstation::dsp::FrequencyShifter shifter_;   // worker thread only
 
     std::deque<std::pair<std::chrono::steady_clock::time_point, float>> snrHistory_;
     float peakSnr_ = -120.0f;
