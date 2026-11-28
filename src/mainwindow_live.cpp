@@ -81,7 +81,7 @@ QWidget* MainWindow::makeControlPanel() {
     auto* sourceBox = new QWidget;
     Form sourceForm(sourceBox);
     inputSource_ = new QComboBox;
-    inputSource_->addItems({"Pluto IP", "RTL-SDR", "File input (WAV / cs16 / cs8)", "HackRF One"});
+    inputSource_->addItems({"Pluto IP", "RTL-SDR", "File input (WAV / cs16 / cs8)", "HackRF One", "Pluto USB"});
     sourceForm.row(QStringLiteral("Input"), inputSource_);
 
     rtlOptions_ = new QWidget;

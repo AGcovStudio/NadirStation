@@ -1,0 +1,5 @@
+NADIR Station 2.1.2: Pluto USB input
+
+- New "Pluto USB" entry in the Input box: the PlutoSDR is opened over USB
+  (libiio "usb:") instead of the network address. Pluto IP is unchanged.
+- Version 2.1.2.

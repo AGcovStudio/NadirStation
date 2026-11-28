@@ -2,7 +2,7 @@
 
 **气象卫星接收与处理软件 · A meteorological-satellite reception and processing station**
 
-by AGcov (BI2QYN) · 版本 2.1.0 · [AGPL-3.0](LICENSE)
+by AGcov (BI2QYN) · 版本 2.1.2 · [AGPL-3.0](LICENSE)
 
 NADIR Station 是一套运行在 Windows 上的 L 波段气象卫星地面站软件。它从 SDR 采集基带信号，完成解调、同步、纠错和数据层解析，再生成图像与 L1/L2 产品。整条链路自己实现，接收软判决信息，不依赖其他解码器。
 
@@ -25,9 +25,9 @@ NADIR Station is a Windows ground-station application for L-band weather satelli
 | MetOp | AHRPT | 1701.3 MHz | QPSK 2.33 Msym/s, Viterbi r=3/4, RS |
 | METEOR-M | HRPT | 1700.0 MHz | PM / Manchester 665.4 kbit/s |
 
-接收设备：ADALM-PLUTO（libiio，默认地址 `192.168.3.10`，可在 CMake 中用 NADIRSTATION_DEFAULT_PLUTO_IP 修改）、RTL-SDR（运行时加载 `rtlsdr.dll` / `librtlsdr.so`）、HackRF One（运行时加载 `hackrf.dll` / `libhackrf.so.0`），也可以回放 `.cs16 / .cs8 / .cu8 / .wav` 录音。实时输入可设“Frequency shift”：接收机偏开下行频率调谐，再在软件里把信号挪回中心，让 DC 尖峰落在信号旁边。
+接收设备：ADALM-PLUTO（libiio，网口默认地址 `192.168.3.10`，可在 CMake 中用 NADIRSTATION_DEFAULT_PLUTO_IP 修改；也可以用 USB 线直连，输入选 “Pluto USB”）、RTL-SDR（运行时加载 `rtlsdr.dll` / `librtlsdr.so`）、HackRF One（运行时加载 `hackrf.dll` / `libhackrf.so.0`），也可以回放 `.cs16 / .cs8 / .cu8 / .wav` 录音。实时输入可设“Frequency shift”：接收机偏开下行频率调谐，再在软件里把信号挪回中心，让 DC 尖峰落在信号旁边。
 
-Receivers: ADALM-PLUTO (libiio, default `192.168.3.10`, change with NADIRSTATION_DEFAULT_PLUTO_IP), RTL-SDR (loads `rtlsdr.dll` / `librtlsdr.so` at run time), HackRF One (loads `hackrf.dll` / `libhackrf.so.0` at run time), or playback of `.cs16 / .cs8 / .cu8 / .wav` recordings. Live inputs take a *Frequency shift*: the SDR is tuned off the downlink and the signal is moved back in software, so the DC spike sits beside the signal instead of on it.
+Receivers: ADALM-PLUTO (libiio, network default `192.168.3.10`, change with NADIRSTATION_DEFAULT_PLUTO_IP; or plugged in over USB, choose “Pluto USB”), RTL-SDR (loads `rtlsdr.dll` / `librtlsdr.so` at run time), HackRF One (loads `hackrf.dll` / `libhackrf.so.0` at run time), or playback of `.cs16 / .cs8 / .cu8 / .wav` recordings. Live inputs take a *Frequency shift*: the SDR is tuned off the downlink and the signal is moved back in software, so the DC spike sits beside the signal instead of on it.
 
 ## 解码门限 · Decoding thresholds
 

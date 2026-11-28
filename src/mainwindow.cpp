@@ -206,8 +206,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(receiver_.get(), &PlutoReceiver::statusMessage, this, &MainWindow::updateStatus);
     connect(receiver_.get(), &PlutoReceiver::deviceConnected, this, [this](bool yes) {
-        if (activeInput_ != InputSource::Pluto) return;
-        setConnState(yes ? "Pluto: connected" : "Pluto: offline", yes ? QStringLiteral("ok") : QStringLiteral("warn"));
+        if (activeInput_ != InputSource::Pluto && activeInput_ != InputSource::PlutoUsb) return;
+        const QString plutoName = activeInput_ == InputSource::PlutoUsb ? QStringLiteral("Pluto USB") : QStringLiteral("Pluto");
+        setConnState(plutoName + (yes ? QStringLiteral(": connected") : QStringLiteral(": offline")),
+                     yes ? QStringLiteral("ok") : QStringLiteral("warn"));
         if (!yes && !receiver_->isRunning()) finishRx(true);
     });
     connect(wavReceiver_.get(), &WavReceiver::samplesReady, decoder_.get(), &NadirStationDecoder::processSamples, Qt::DirectConnection);
@@ -562,7 +564,7 @@ void MainWindow::applySatelliteSelection() {
         QSettings s(QStringLiteral("AGcov"), QStringLiteral("NadirStation"));
         const QVariant saved = s.value(QStringLiteral("rx/gainDb/%1/%2").arg(source).arg(satelliteId));
         if (saved.isValid()) gain_->setValue(saved.toDouble());
-        else if (satelliteId == 11 && source == 0) gain_->setValue(60.0);
+        else if (satelliteId == 11 && (source == 0 || source == 4)) gain_->setValue(60.0);
     }
     // The symbol rate belongs to the spacecraft, so it moves with the selection. The decoder's
     // PSK chain is the same object the constellation view is fed from, so retuning it here is what
@@ -660,7 +662,8 @@ void MainWindow::applySatelliteSelection() {
         const int source = inputSource_ ? inputSource_->currentIndex() : 0;
         const QString receiverName = source == 1 ? QStringLiteral("RTL-SDR")
                                    : source == 2 ? QStringLiteral("File input")
-                                   : source == 3 ? QStringLiteral("HackRF One") : QStringLiteral("PlutoSDR");
+                                   : source == 3 ? QStringLiteral("HackRF One")
+                                   : source == 4 ? QStringLiteral("PlutoSDR USB") : QStringLiteral("PlutoSDR");
         const QString service = satelliteId == 16 ? QStringLiteral("MetOp AHRPT")
                               : satelliteId == 17 ? QStringLiteral("METEOR HRPT")
                               : satelliteId == 15 ? QStringLiteral("ELEKTRO-L HRIT")
@@ -825,7 +828,8 @@ void MainWindow::refreshSystemStatus() {
     const int sourceIndex = inputSource_ ? inputSource_->currentIndex() : 0;
     const QString source = sourceIndex == 2 ? QStringLiteral("WAV playback")
                          : sourceIndex == 1 ? QStringLiteral("RTL-SDR · USB")
-                         : sourceIndex == 3 ? QStringLiteral("HackRF One · USB") : QStringLiteral("PlutoSDR · 192.168.3.10");
+                         : sourceIndex == 3 ? QStringLiteral("HackRF One · USB")
+                         : sourceIndex == 4 ? QStringLiteral("PlutoSDR · USB") : QStringLiteral("PlutoSDR · 192.168.3.10");
     QString state;
     if (receiving && decoding) state = QStringLiteral("RECEIVING · DECODING");
     else if (receiving) state = QStringLiteral("RECEIVING · IDLE DECODE");
@@ -1023,7 +1027,10 @@ void MainWindow::startRx() {
     // behind, let the receiver thread wait for the decoder instead of allowing
     // an ever-growing queue to turn live demodulation into delayed playback.
     if (decoder_) decoder_->setIngressBackpressureEnabled(true);
-    QMetaObject::invokeMethod(decoder_.get(), [this] { decoder_->setSourceLabel(QStringLiteral("PlutoSDR IP 192.168.3.10")); }, Qt::QueuedConnection);
+    const bool plutoUsb = inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::PlutoUsb);
+    QMetaObject::invokeMethod(decoder_.get(), [this, plutoUsb] {
+        decoder_->setSourceLabel(plutoUsb ? QStringLiteral("PlutoSDR USB") : QStringLiteral("PlutoSDR IP 192.168.3.10"));
+    }, Qt::QueuedConnection);
     const double freqHz = freq_->value() * 1e6;
     const double sr = sampleRateHz();
     if (sr <= 0.0) {
@@ -1033,6 +1040,7 @@ void MainWindow::startRx() {
     }
     const double bw = rfBandwidthHz();   // None = 0 = automatic
     receiver_->setIp(QStringLiteral(NADIRSTATION_DEFAULT_PLUTO_IP));
+    receiver_->setUsb(plutoUsb);
     if (std::abs(frequencyShiftHz()) >= 0.45 * sr) {
         if (decoder_) decoder_->setIngressBackpressureEnabled(false);
         statusBar()->showMessage(QStringLiteral("The frequency shift must stay within ±%1 kHz at %2 MS/s.")
@@ -1065,7 +1073,7 @@ void MainWindow::startRx() {
         decoder_->setIngressBackpressureEnabled(false);
         return;
     }
-    activeInput_ = InputSource::Pluto;
+    activeInput_ = plutoUsb ? InputSource::PlutoUsb : InputSource::Pluto;
     if (recordBtn_ && recordBtn_->isChecked()) startIqRecording(sr, freqHz, false);
     rxBtn_->setText("Stop Receiving");
     updateInputUi();
@@ -1150,12 +1158,13 @@ void MainWindow::finishRx(bool inputFinished) {
     if (source == InputSource::File) wavReceiver_->stop();
     if (source == InputSource::Rtl) rtlReceiver_->stop();
     if (source == InputSource::HackRf) hackrfReceiver_->stop();
-    if (source == InputSource::Pluto) receiver_->stop();
+    if (source == InputSource::Pluto || source == InputSource::PlutoUsb) receiver_->stop();
     stopIqRecording();
     nadirstation::log::write(QStringLiteral("GUI stopRx: %1 receiver stopped")
         .arg(source == InputSource::File ? QStringLiteral("WAV") :
              source == InputSource::Rtl ? QStringLiteral("RTL-SDR") :
-             source == InputSource::HackRf ? QStringLiteral("HackRF") : QStringLiteral("Pluto")));
+             source == InputSource::HackRf ? QStringLiteral("HackRF") :
+             source == InputSource::PlutoUsb ? QStringLiteral("Pluto USB") : QStringLiteral("Pluto")));
     nadirstation::log::flush();
 
     const bool quitAfterDecode = source == InputSource::File && inputFinished && diagnosticWavMode_;
@@ -1253,6 +1262,7 @@ void MainWindow::updateInputUi() {
     const bool wav = inputSource_ && inputSource_->currentIndex() == 2;
     const bool rtl = inputSource_ && inputSource_->currentIndex() == 1;
     const bool hackrf = inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::HackRf);
+    const bool plutoUsbInput = inputSource_ && inputSource_->currentIndex() == static_cast<int>(InputSource::PlutoUsb);
     const bool running = activeInput_ != InputSource::None;
     if (inputSource_) inputSource_->setEnabled(!running);
     if (wavPath_) wavPath_->setEnabled(wav && !running);
@@ -1293,6 +1303,8 @@ void MainWindow::updateInputUi() {
         setConnState("RTL-SDR: ready", QStringLiteral("warn"));
     } else if (hackrf && !(hackrfReceiver_ && hackrfReceiver_->isRunning())) {
         setConnState("HackRF: ready", QStringLiteral("warn"));
+    } else if (plutoUsbInput && !(receiver_ && receiver_->isRunning())) {
+        setConnState("Pluto USB: ready", QStringLiteral("warn"));
     } else if (!wav && !rtl && !hackrf && !(receiver_ && receiver_->isRunning())) {
         setConnState("Pluto: offline (simulation)", QStringLiteral("warn"));
     }
@@ -1351,7 +1363,8 @@ void MainWindow::updateMetrics(float snr, float peak, float avg, double sr) {
     const int sourceIndex = inputSource_ ? inputSource_->currentIndex() : 0;
     const QString input = sourceIndex == 1 ? QStringLiteral("RTL-SDR USB")
                         : sourceIndex == 2 ? QStringLiteral("WAV input")
-                        : sourceIndex == 3 ? QStringLiteral("HackRF One USB") : QStringLiteral("Pluto 192.168.3.10");
+                        : sourceIndex == 3 ? QStringLiteral("HackRF One USB")
+                        : sourceIndex == 4 ? QStringLiteral("Pluto USB") : QStringLiteral("Pluto 192.168.3.10");
     statusBar()->showMessage(QString("RX %1 MS/s · %2")
         .arg(sr / 1e6, 0, 'f', 3).arg(input));
 }

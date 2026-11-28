@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     nadirstation::log::write(QStringLiteral("Application started"));
     QApplication::setApplicationName("NADIR_Station");
     QApplication::setOrganizationName("NADIR");
-    QApplication::setApplicationVersion("2.1.1");
+    QApplication::setApplicationVersion("2.1.2");
 
     nadirstation::ui::apply(app);
     if (const QIcon icon = applicationIcon(); !icon.isNull()) QApplication::setWindowIcon(icon);

@@ -216,7 +216,7 @@ private:
     std::shared_ptr<nadirstation::IqRecorder> iqRecorder_ = std::make_shared<nadirstation::IqRecorder>();
     void startIqRecording(double sampleRate, double centreHz, bool rtl);
     // Values are the Input box indices.
-    enum class InputSource { None = -1, Pluto, Rtl, File, HackRf };
+    enum class InputSource { None = -1, Pluto, Rtl, File, HackRf, PlutoUsb };
     InputSource activeInput_ = InputSource::None;
     void finishRx(bool inputFinished);
     void stopIqRecording();

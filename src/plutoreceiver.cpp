@@ -69,10 +69,12 @@ bool PlutoReceiver::configurePluto() {
     emit deviceConnected(false);
     return false;
 #else
-    const QByteArray uri = QStringLiteral("ip:%1").arg(ip_).toUtf8();
+    const QByteArray uri = usb_ ? QByteArray("usb:") : QStringLiteral("ip:%1").arg(ip_).toUtf8();
     ctx_ = iio_create_context_from_uri(uri.constData());
     if (!ctx_) {
-        emit statusMessage(QStringLiteral("Cannot connect to the PlutoSDR at ip:%1").arg(ip_));
+        emit statusMessage(usb_ ? QStringLiteral("Cannot open a PlutoSDR over USB. Check the cable and driver, that only one PlutoSDR is plugged in, "
+                                                 "and that no other program is using it.")
+                                : QStringLiteral("Cannot connect to the PlutoSDR at ip:%1").arg(ip_));
         emit deviceConnected(false);
         return false;
     }
@@ -159,7 +161,7 @@ bool PlutoReceiver::configurePluto() {
     const QString bandwidthText = bandwidthHz_ > 0.0 ? QStringLiteral("%1 MHz BW").arg(bandwidthHz_ / 1e6, 0, 'f', 3)
                                                      : QStringLiteral("no bandwidth limit");
     emit statusMessage(QStringLiteral("PlutoSDR connected: %1 · %2 MS/s · %3")
-        .arg(ip_).arg(actualSampleRate_ / 1e6, 0, 'f', 3).arg(bandwidthText));
+        .arg(usb_ ? QStringLiteral("USB") : ip_).arg(actualSampleRate_ / 1e6, 0, 'f', 3).arg(bandwidthText));
     emit deviceConnected(true);
     return true;
 #endif

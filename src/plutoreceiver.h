@@ -20,6 +20,8 @@ public:
 
     void setParameters(double frequencyHz, double sampleRate, double bandwidthHz, double gainDb);
     void setIp(const QString& ip);
+    // true: open the PlutoSDR over USB (libiio "usb:") instead of the network address.
+    void setUsb(bool usb) { usb_ = usb; }
     void setSpectrumSettings(std::size_t fftSize, nadirstation::dsp::SpectrumWindow window);
     // Change the RX gain while receiving: applied by the worker between two buffer refills. The
     // value passed to setParameters only takes effect on the next start().
@@ -50,6 +52,7 @@ private:
     bool configurePluto();
     void releaseDevice();
 
+    bool usb_ = false;
     QString ip_ = QStringLiteral(NADIRSTATION_DEFAULT_PLUTO_IP);
     double frequencyHz_ = 1687500000.0;
     double sampleRate_ = 6000000.0;

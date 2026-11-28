@@ -52,7 +52,7 @@ QWidget* MainWindow::makeNavRail() {
         if (!mark.isNull()) {
             mark.setDevicePixelRatio(2.0);
             title->setPixmap(mark);
-            title->setToolTip(QStringLiteral("NADIR STATION 2.1.1"));
+            title->setToolTip(QStringLiteral("NADIR STATION 2.1.2"));
         }
     }
     auto* brand = new QVBoxLayout;
@@ -93,7 +93,7 @@ QWidget* MainWindow::makeNavRail() {
     railClock_ = label(QStringLiteral("--:--:-- UTC"), "RailClock");
     v->addWidget(railClock_);
     v->addSpacing(4);
-    v->addWidget(label(QStringLiteral("v2.1.1 · © AGcov (BI2QYN)"), "RailFoot"));
+    v->addWidget(label(QStringLiteral("v2.1.2 · © AGcov (BI2QYN)"), "RailFoot"));
     return rail;
 }
 
@@ -211,7 +211,7 @@ void MainWindow::refreshLinkStrip() {
     const bool receiving = pluto || rtl || file;
     if (linkInput_) {
         const QString name = source == 1 ? QStringLiteral("RTL-SDR") : source == 2 ? QStringLiteral("File")
-                           : source == 3 ? QStringLiteral("HackRF") : QStringLiteral("PlutoSDR");
+                           : source == 3 ? QStringLiteral("HackRF") : source == 4 ? QStringLiteral("PlutoSDR USB") : QStringLiteral("PlutoSDR");
         linkInput_->setText(name);
         setTone(linkInput_, "tone", receiving ? QStringLiteral("ok") : QStringLiteral("idle"));
     }
@@ -436,7 +436,7 @@ void MainWindow::showAbout() {
     box.setWindowTitle(QStringLiteral("About NADIR STATION"));
     box.setIconPixmap(windowIcon().pixmap(64, 64));
     box.setTextFormat(Qt::RichText);
-    box.setText(QStringLiteral("<b>NADIR STATION</b> 2.1.1<br>Geostationary weather-satellite ground station"));
+    box.setText(QStringLiteral("<b>NADIR STATION</b> 2.1.2<br>Geostationary weather-satellite ground station"));
     box.setInformativeText(QStringLiteral(
         "FY-2G / FY-2H S-VISSR · GK-2A LRIT and HRIT · GOES GVAR · ELEKTRO-L GGAK<br>"
         "PlutoSDR, RTL-SDR and baseband recordings.<br><br>"
