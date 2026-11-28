@@ -1,7 +1,7 @@
 ; NADIR Station - Windows 10/11 x64 installer (Inno Setup 6.3 or later).
 ; Built by make_installer.bat after build_windows.bat; the files come from dist\stage.
 #define AppName "NADIR Station"
-#define AppVersion "2.1.0"
+#define AppVersion "2.1.1"
 #define AppExe "NADIR_Station.exe"
 
 [Setup]

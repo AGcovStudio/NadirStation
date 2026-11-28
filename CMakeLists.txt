@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(NadirStation VERSION 2.1.0 LANGUAGES C CXX)
+project(NadirStation VERSION 2.1.1 LANGUAGES C CXX)
 
 if(UNIX AND NOT APPLE)
     # GNU/Linux-specific temporary fixes (PR #3 by YZYMC)
